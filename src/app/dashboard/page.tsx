@@ -6,27 +6,31 @@ import {
   CartesianGrid, Legend, PieChart, Pie, Cell
 } from "recharts";
 
-/** Брендовые цвета AdRiver */
-const BRAND_BLUE   = "rgb(0,120,215)";
-const BRAND_LIGHT  = "rgb(120,210,245)";
-const BRAND_GREEN  = "rgb(149,214,0)";
-const PIE_COLORS   = ["#0ea5e9", "#e11d48"];
+/** ===== Типы ===== */
+type Device = "all" | "web" | "mobile" | "tablet" | "smarttv";
+type Country = "all" | "Россия" | "Казахстан";
+type City = "all" | "Москва" | "Санкт-Петербург" | "Екатеринбург" | "Алматы";
 
 type Placement = {
   id: string; campaignId: string; name: string;
   impressions: number; reach: number; exclusive: number;
   clicks: number; uclicks: number; freq: number; spend: number;
-  ivtShare: number; country: string; city?: string;
-  device: "web" | "mobile" | "tablet" | "smarttv";
-  domain: string;
+  ivtShare: number; country: Exclude<Country,"all">; city?: Exclude<City,"all">;
+  device: Exclude<Device,"all">; domain: string;
 };
 
+/** ===== Цвета бренда ===== */
+const BRAND_BLUE   = "rgb(0,120,215)";
+const BRAND_LIGHT  = "rgb(120,210,245)";
+const BRAND_GREEN  = "rgb(149,214,0)";
+const PIE_COLORS   = ["#0ea5e9", "#e11d48"];
+
+/** ===== Данные ===== */
 const CAMPAIGNS = [
   { id: "cmp-a", name: "Back-to-School 2025" },
   { id: "cmp-b", name: "Autumn Sale 2025" },
 ];
 
-/* SmartTV/In-stream → IVI, In-App/Native → Hyper */
 const placements: Placement[] = [
   { id: "p1", campaignId: "cmp-a", name: "Yandex / Banner 300x250", impressions: 240000, reach: 160000, exclusive: 90000, clicks: 3800, uclicks: 2900, freq: 1.50, spend: 210000, ivtShare: 2.1, country: "Россия", city: "Москва", device: "web",     domain: "yandex.ru" },
   { id: "p2", campaignId: "cmp-a", name: "VK / Video preroll",       impressions: 180000, reach: 120000, exclusive: 70000, clicks: 2600, uclicks: 2100, freq: 1.60, spend: 240000, ivtShare: 2.8, country: "Россия", city: "Санкт-Петербург", device: "mobile",  domain: "vk.com" },
@@ -60,7 +64,7 @@ const domains: DomainRow[] = [
 
 const ivt = { valid: 95.4, invalid: 4.6 };
 
-/* utils */
+/** ===== Утилиты ===== */
 function fmt(n: number) { return new Intl.NumberFormat("ru-RU").format(n); }
 function aggregate(rows: Placement[]) {
   const impressions = rows.reduce((s, r) => s + r.impressions, 0);
@@ -74,7 +78,7 @@ function aggregate(rows: Placement[]) {
   return { impressions, clicks, uclicks, reach, exclusive, spend, freq, ivtShare };
 }
 
-/* клик-вне */
+/** click-outside */
 function useClickOutside<T extends HTMLElement>(onClickOutside: () => void) {
   const ref = useRef<T|null>(null);
   useEffect(() => {
@@ -87,7 +91,7 @@ function useClickOutside<T extends HTMLElement>(onClickOutside: () => void) {
   return ref;
 }
 
-/* Комбобокс Кампании (поиск+список) — широкое окно */
+/** Комбобокс кампаний (поиск) */
 function CampaignCombobox({
   items, value, onChange,
 }: { items: { id: string; name: string }[]; value: string; onChange: (id: string) => void; }) {
@@ -132,15 +136,30 @@ function CampaignCombobox({
   );
 }
 
-/* ===== Страница ===== */
+/** ===== Страница ===== */
 export default function CampaignDashboard() {
   // фильтры
   const [periodFrom, setPeriodFrom] = useState("2025-08-01");
   const [periodTo,   setPeriodTo]   = useState("2025-08-30");
-  const [device, setDevice]         = useState<"all"|"web"|"mobile"|"tablet"|"smarttv">("all");
-  const [country, setCountry]       = useState<"all"|"Россия"|"Казахстан">("all");
-  const [city, setCity]             = useState<"all"|"Москва"|"Санкт-Петербург"|"Екатеринбург"|"Алматы">("all");
+  const [device, setDevice]         = useState<Device>("all");
+  const [country, setCountry]       = useState<Country>("all");
+  const [city, setCity]             = useState<City>("all");
   const [campaignId, setCampaignId] = useState<string>("all");
+
+  // обработчики select без any
+  const onDeviceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const v = e.target.value as Device;
+    setDevice(v);
+  };
+  const onCountryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const v = e.target.value as Country;
+    setCountry(v);
+    setCity("all");
+  };
+  const onCityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const v = e.target.value as City;
+    setCity(v);
+  };
 
   // отбор
   const filtered = useMemo(() => placements.filter(p => {
@@ -166,17 +185,17 @@ export default function CampaignDashboard() {
             {/* Период — компактный */}
             <div className="flex items-center gap-2 shrink-0">
               <label className="text-sm text-gray-600 whitespace-nowrap">Период</label>
-              <input type="date" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)}
+              <input type="date" value={periodFrom} onChange={(e:React.ChangeEvent<HTMLInputElement>)=>setPeriodFrom(e.target.value)}
                      className="w-[150px] rounded-md border px-2 py-1 text-sm" />
               <span className="text-gray-500">—</span>
-              <input type="date" value={periodTo} onChange={e=>setPeriodTo(e.target.value)}
+              <input type="date" value={periodTo} onChange={(e:React.ChangeEvent<HTMLInputElement>)=>setPeriodTo(e.target.value)}
                      className="w-[150px] rounded-md border px-2 py-1 text-sm" />
             </div>
 
             {/* Страна */}
             <div className="flex items-center gap-2 shrink-0">
               <label className="text-sm text-gray-600 whitespace-nowrap">Страна</label>
-              <select value={country} onChange={e=>{setCountry(e.target.value as any); setCity("all");}}
+              <select value={country} onChange={onCountryChange}
                       className="w-[160px] rounded-md border px-2 py-1 text-sm">
                 <option value="all">все</option>
                 <option>Россия</option>
@@ -187,8 +206,8 @@ export default function CampaignDashboard() {
             {/* Город */}
             <div className="flex items-center gap-2 shrink-0">
               <label className="text-sm text-gray-600 whitespace-nowrap">Город (РФ)</label>
-              <select value={city} onChange={e=>setCity(e.target.value as any)}
-                      className="w-[180px] rounded-md border px-2 py-1 text-sm">
+              <select value={city} onChange={onCityChange}
+                      className="w/[180px] rounded-md border px-2 py-1 text-sm">
                 <option value="all">все</option>
                 <option>Москва</option>
                 <option>Санкт-Петербург</option>
@@ -200,7 +219,7 @@ export default function CampaignDashboard() {
             {/* Устройство */}
             <div className="flex items-center gap-2 shrink-0">
               <label className="text-sm text-gray-600 whitespace-nowrap">Устройство</label>
-              <select value={device} onChange={e=>setDevice(e.target.value as any)}
+              <select value={device} onChange={onDeviceChange}
                       className="w-[180px] rounded-md border px-2 py-1 text-sm">
                 <option value="all">все устройства</option>
                 <option value="web">web</option>
@@ -231,7 +250,7 @@ export default function CampaignDashboard() {
           <Kpi title="Частота"          value={totals.freq.toFixed(2)} />
         </section>
 
-        {/* Комбинированный график */}
+        {/* Комбо-график */}
         <section className="rounded-2xl border bg-white p-4">
           <h3 className="font-semibold mb-3">По размещениям: Показы, Клики и Бюджет</h3>
           <div className="h-80">
@@ -342,7 +361,7 @@ export default function CampaignDashboard() {
   );
 }
 
-/* UI helpers */
+/** ===== Мелкие UI-компоненты ===== */
 function Kpi({ title, value }: { title: string; value: string }) {
   return (
     <div className="rounded-2xl border bg-white p-4">
