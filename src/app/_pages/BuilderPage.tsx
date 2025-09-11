@@ -1,307 +1,268 @@
-"use client";
+'use client';
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams, usePathname } from "next/navigation";
+import { mockPreview, DEFAULT_METRICS, saveOrder, type ReportOrder } from "@/lib/reports";
+import { loadMappingRU } from "@/lib/mediaplan";
+import MultiSelect, { type Option } from "@/components/MultiSelect";
 
-import { useMemo, useState } from "react";
+type Bin = "dims"|"metrics";
+type CampaignOption = { id:number; name:string; brand:string };
 
-/* ====== Канонические списки ====== */
-const ATTRIBUTES = [
-  // Идентификаторы/структура
-  "Кампания", "ID РК", "Размещение", "ID размещения", "Баннер", "ID баннера",
-  "Площадка/Домен", "Поставщик", "Агентство", "Рекламодатель", "Продукт",
-  // Контекст показа
-  "Формат", "Среда размещения", "Устройство", "Страна", "Город", "Дата",
-  // Видео/верификация/коды
-  "VAST версия", "Хостинг видео", "Тип измерения",
-  // Аудитория
-  "Целевая аудитория", "Пол", "Возрастная группа"
-] as const;
+const CAMPAIGNS: CampaignOption[] = [
+  { id: 819306, name: "Летувль_охват_август", brand: "Бренд 1" },
+  { id: 817144, name: "c2c_auto_avito_select_t1_jan-feb_2025_byps", brand: "Бренд 2" },
+  { id: 815459, name: "Default AD", brand: "Бренд 2" },
+  { id: 815931, name: "Test1", brand: "Бренд 2" },
+];
 
-const METRICS = [
-  // Delivery / Reach
-  "Показы", "Зачтённые показы", "Охват", "Экскл. аудитория", "Частота",
-  // Clicks / CTR / Cost
-  "Клики", "Уник. клики", "CTR", "Бюджет ₽", "CPM", "CPC", "CPA",
-  // Quality / Verification
-  "IVT %", "Видимость %", "Валидные показы",
-  // Video
-  "VTR 25%", "VTR 50%", "VTR 75%", "VTR 100%",
-  // Conversions
-  "Целевые действия", "Post-click конверсии", "Post-view конверсии"
-] as const;
-
-type Attribute = typeof ATTRIBUTES[number];
-type Metric = typeof METRICS[number];
-
-type ZoneName = "filters" | "rows" | "metrics";
-type ZonesState = {
-  filters: Attribute[];
-  rows: Attribute[];
-  metrics: Metric[];
-};
-
-export default function BuilderPage() {
-  /* Поиски по разным спискам */
-  const [qAttr, setQAttr] = useState("");
-  const [qMet, setQMet] = useState("");
-
-  /* Состояние зон */
-  const [zones, setZones] = useState<ZonesState>({
-    filters: ["Дата","Страна","Устройство"],
-    rows: ["Кампания","Размещение"],
-    metrics: ["Показы","Клики","Бюджет ₽"],
-  });
-
-  /* Фильтрация */
-  const viewAttributes = useMemo(()=>{
-    const n = norm(qAttr);
-    return ATTRIBUTES.filter(a=> norm(a).includes(n));
-  }, [qAttr]);
-
-  const viewMetrics = useMemo(()=>{
-    const n = norm(qMet);
-    return METRICS.filter(m=> norm(m).includes(n));
-  }, [qMet]);
-
-  /* --- DnD helpers --- */
-  function onDragStartAttr(e: React.DragEvent<HTMLButtonElement>, attr: Attribute) {
-    e.dataTransfer.setData("kind", "attr");
-    e.dataTransfer.setData("value", attr);
-    e.dataTransfer.effectAllowed = "copy";
-  }
-  function onDragStartMetric(e: React.DragEvent<HTMLButtonElement>, met: Metric) {
-    e.dataTransfer.setData("kind", "metric");
-    e.dataTransfer.setData("value", met);
-    e.dataTransfer.effectAllowed = "copy";
-  }
-
-  function allowDrop(e: React.DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-  }
-
-  function dropTo(zone: ZoneName, e: React.DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    const kind = e.dataTransfer.getData("kind");
-    const val = e.dataTransfer.getData("value");
-
-    /* Правила:
-       - metrics: принимает ТОЛЬКО kind=metric
-       - filters/rows: принимают ТОЛЬКО kind=attr
-    */
-    if (zone === "metrics" && kind !== "metric") return;
-    if ((zone === "filters" || zone === "rows") && kind !== "attr") return;
-
-    setZones(prev => {
-      // защита от дублей
-      if (zone === "metrics") {
-        if (prev.metrics.includes(val as Metric)) return prev;
-        return { ...prev, metrics: [...prev.metrics, val as Metric] };
-      } else if (zone === "filters") {
-        if (prev.filters.includes(val as Attribute)) return prev;
-        return { ...prev, filters: [...prev.filters, val as Attribute] };
-      } else {
-        if (prev.rows.includes(val as Attribute)) return prev;
-        return { ...prev, rows: [...prev.rows, val as Attribute] };
-      }
-    });
-  }
-
-  function removeFrom(zone: ZoneName, val: string) {
-    setZones(prev=>{
-      if (zone === "metrics") {
-        return { ...prev, metrics: prev.metrics.filter(x=>x!==val) };
-      } else if (zone === "filters") {
-        return { ...prev, filters: prev.filters.filter(x=>x!==val) };
-      } else {
-        return { ...prev, rows: prev.rows.filter(x=>x!==val) };
-      }
-    });
-  }
-
-  function clearZone(zone: ZoneName) {
-    setZones(prev => ({ ...prev, [zone]: [] as never }));
-  }
-
+function Tabs(){
+  const path = usePathname();
+  const Tab = ({href,label}:{href:string;label:string}) => (
+    <Link href={href}
+      className={`rounded-full px-3 py-1.5 text-sm ${path===href? "bg-sky-600 text-white":"bg-white text-sky-700 ring-1 ring-sky-600 hover:bg-sky-50"}`}>
+      {label}
+    </Link>
+  );
   return (
-    <div className="min-h-dvh bg-slate-50">
-      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b">
-        <div className="mx-auto max-w-7xl px-4 py-3">
-          <h1 className="text-xl font-semibold">Конструктор отчётов</h1>
-          <p className="text-sm text-gray-500">Перетаскивай атрибуты и метрики в нужные зоны ниже</p>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-7xl px-4 py-4">
-        <div className="flex flex-col lg:flex-row gap-4">
-          {/* MAIN */}
-          <main className="flex-1 min-w-0">
-            <div className="grid gap-4">
-              <DropZone
-                title="Фильтры (принимают только атрибуты)"
-                hint="Например: Дата, Страна, Устройство"
-                items={zones.filters}
-                onDragOver={allowDrop}
-                onDrop={(e)=>dropTo("filters", e)}
-                onRemove={(val)=>removeFrom("filters", val)}
-                onClear={()=>clearZone("filters")}
-              />
-              <div className="grid md:grid-cols-2 gap-4">
-                <DropZone
-                  title="Строки (атрибуты)"
-                  hint="Например: Кампания, Размещение, Баннер"
-                  items={zones.rows}
-                  onDragOver={allowDrop}
-                  onDrop={(e)=>dropTo("rows", e)}
-                  onRemove={(val)=>removeFrom("rows", val)}
-                  onClear={()=>clearZone("rows")}
-                />
-                <DropZone
-                  title="Метрики (столбцы)"
-                  hint="Принимает только метрики"
-                  items={zones.metrics}
-                  onDragOver={allowDrop}
-                  onDrop={(e)=>dropTo("metrics", e)}
-                  onRemove={(val)=>removeFrom("metrics", val)}
-                  onClear={()=>clearZone("metrics")}
-                />
-              </div>
-
-              {/* Предпросмотр */}
-              <section className="rounded-2xl border bg-white p-4">
-                <h3 className="font-semibold mb-2">Предпросмотр таблицы</h3>
-                <div className="text-sm text-gray-600 mb-3">
-                  Фильтры: {zones.filters.join(", ") || "—"} • Строки: {zones.rows.join(", ") || "—"} • Метрики: {zones.metrics.join(", ") || "—"}
-                </div>
-                <div className="overflow-auto">
-                  <table className="w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="bg-slate-100">
-                        {zones.rows.length === 0 ? (
-                          <th className="border px-3 py-2 text-left">—</th>
-                        ) : (
-                          zones.rows.map(h => (
-                            <th key={h} className="border px-3 py-2 text-left">{h}</th>
-                          ))
-                        )}
-                        {zones.metrics.map(h => (
-                          <th key={h} className="border px-3 py-2 text-left">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        {(zones.rows.length === 0 ? ["Пример"] : zones.rows.map((_,i)=> i===0?"Кампания А":"…"))
-                          .map((v,idx)=><td key={idx} className="border px-3 py-2">{v}</td>)}
-                        {zones.metrics.map((_,idx)=><td key={idx} className="border px-3 py-2 text-right">###</td>)}
-                      </tr>
-                      <tr>
-                        {(zones.rows.length === 0 ? ["Пример"] : zones.rows.map((_,i)=> i===0?"Кампания Б":"…"))
-                          .map((v,idx)=><td key={idx} className="border px-3 py-2">{v}</td>)}
-                        {zones.metrics.map((_,idx)=><td key={idx} className="border px-3 py-2 text-right">###</td>)}
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            </div>
-          </main>
-
-          {/* SIDEBAR RIGHT */}
-          <aside className="lg:w-96 lg:shrink-0 lg:order-last">
-            <div className="lg:sticky lg:top-16 space-y-4">
-              {/* Блок Атрибуты */}
-              <section className="rounded-2xl border bg-white p-4 h-[34vh] flex flex-col">
-                <h3 className="font-semibold">Атрибуты</h3>
-                <input
-                  value={qAttr}
-                  onChange={(e)=>setQAttr(e.target.value)}
-                  placeholder="Поиск по атрибутам…"
-                  className="mt-2 mb-2 w-full rounded-md border px-3 py-2 text-sm"
-                />
-                <div className="min-h-0 flex-1 overflow-auto space-y-2">
-                  {viewAttributes.map(a=>(
-                    <button
-                      key={a}
-                      draggable
-                      onDragStart={(e)=>onDragStartAttr(e,a)}
-                      className="w-full text-left rounded-md border px-3 py-2 text-sm bg-white hover:bg-slate-50 active:bg-slate-100"
-                      title="Перетащите в Фильтры или Строки"
-                    >
-                      {a}
-                    </button>
-                  ))}
-                  {viewAttributes.length===0 && <div className="text-sm text-gray-500">Ничего не найдено</div>}
-                </div>
-              </section>
-
-              {/* Блок Метрики */}
-              <section className="rounded-2xl border bg-white p-4 h-[34vh] flex flex-col">
-                <h3 className="font-semibold">Метрики</h3>
-                <input
-                  value={qMet}
-                  onChange={(e)=>setQMet(e.target.value)}
-                  placeholder="Поиск по метрикам…"
-                  className="mt-2 mb-2 w-full rounded-md border px-3 py-2 text-sm"
-                />
-                <div className="min-h-0 flex-1 overflow-auto space-y-2">
-                  {viewMetrics.map(m=>(
-                    <button
-                      key={m}
-                      draggable
-                      onDragStart={(e)=>onDragStartMetric(e,m)}
-                      className="w-full text-left rounded-md border px-3 py-2 text-sm bg-white hover:bg-slate-50 active:bg-slate-100"
-                      title="Перетащите в Метрики (столбцы)"
-                    >
-                      {m}
-                    </button>
-                  ))}
-                  {viewMetrics.length===0 && <div className="text-sm text-gray-500">Ничего не найдено</div>}
-                </div>
-              </section>
-            </div>
-          </aside>
-        </div>
-      </div>
+    <div className="mb-4 flex flex-wrap gap-2">
+      <Tab href="/builder" label="Конструктор"/>
+      <Tab href="/builder/list" label="Список отчётов"/>
+      <Tab href="/builder/schedule" label="Расписание"/>
     </div>
   );
 }
 
-/* ===== Компоненты ===== */
+export default function BuilderPage(){
+  const params = useSearchParams();
+  const idsFromQuery = useMemo(()=> (params.get("ids")||"").split(",").map(Number).filter(Boolean),[params]);
 
-function DropZone({
-  title, hint, items, onDragOver, onDrop, onRemove, onClear
-}: {
-  title: string;
-  hint?: string;
-  items: string[];
-  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
-  onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
-  onRemove: (val: string) => void;
-  onClear: () => void;
-}) {
+  // Источник полей — объектная модель (fallback)
+  const mapping = loadMappingRU();
+  const baseDims = useMemo(()=> {
+    const cells = Object.keys(mapping?.ячейки || {});
+    const cols  = Object.keys(mapping?.столбцы || {});
+    const std = ["Кампания","Бренд","Поставщик","Название позиции","Формат размещения","Хостинг видео","Среда размещения","Рекламодатель"];
+    return Array.from(new Set([...cells, ...cols, ...std]));
+  }, [mapping]);
+  const baseMetrics = DEFAULT_METRICS;
+
+  // DnD
+  const [poolDims, setPoolDims]       = useState<string[]>(baseDims);
+  const [poolMetrics, setPoolMetrics] = useState<string[]>(baseMetrics);
+  const [dims, setDims]               = useState<string[]>(["Рекламодатель"].filter(x=>baseDims.includes(x)));
+  const [metrics, setMetrics]         = useState<string[]>(["Показы","Клики","CTR"]);
+  const onDragStart = (e:React.DragEvent<HTMLButtonElement>, item:string, bin:Bin) => {
+    e.dataTransfer.setData("text/plain", JSON.stringify({ item, bin }));
+  };
+  const onDropTo    = (e:React.DragEvent<HTMLDivElement>, target:Bin) => {
+    e.preventDefault();
+    const { item, bin } = JSON.parse(e.dataTransfer.getData("text/plain"));
+    if(target==="dims"){
+      setDims(prev => prev.includes(item)? prev : [...prev, item]);
+      if(bin==="dims") setPoolDims(x=>x.filter(y=>y!==item));
+      else setPoolMetrics(x=>x.filter(y=>y!==item));
+    } else {
+      setMetrics(prev => prev.includes(item)? prev : [...prev, item]);
+      if(bin==="dims") setPoolDims(x=>x.filter(y=>y!==item));
+      else setPoolMetrics(x=>x.filter(y=>y!==item));
+    }
+  };
+  const onDragOver = (e:React.DragEvent)=> e.preventDefault();
+
+  // Период (отдельно от фильтров)
+  const [periodFrom, setFrom] = useState<string>(new Date(Date.now()-14*86400000).toISOString().slice(0,10));
+  const [periodTo,   setTo]   = useState<string>(new Date().toISOString().slice(0,10));
+
+  // Фильтры: кампании + бренды (мультиселект с поиском)
+  const allBrands = useMemo(()=> Array.from(new Set(CAMPAIGNS.map(c=>c.brand))), []);
+  const [filterCampaignIds, setFilterCampaignIds] = useState<number[]>(
+    idsFromQuery.length ? idsFromQuery : CAMPAIGNS.map(c=>c.id)
+  );
+  const [filterBrands, setFilterBrands] = useState<string[]>([]); // пусто = все бренды
+
+  const campaignOptions: Option[] = useMemo(()=>{
+    const cut = (s:string)=> s.length>48 ? s.slice(0,45)+"…" : s;
+    const base = filterBrands.length ? CAMPAIGNS.filter(c=>filterBrands.includes(c.brand)) : CAMPAIGNS;
+    return base.map(c=>({ value: String(c.id), label: `${c.id} — ${cut(c.name)}`, hint: c.brand }));
+  },[filterBrands]);
+  const brandOptions: Option[] = useMemo(()=> allBrands.map(b=>({ value:b, label:b })), [allBrands]);
+
+  // Предпросмотр
+  const preview = useMemo(()=> mockPreview(10, dims, metrics), [dims, metrics]);
+
+  // Заказ отчёта
+  const placeOrder = () => {
+    const rec: ReportOrder = {
+      id: "r"+Date.now(),
+      name: `Отчёт от ${new Date().toLocaleDateString()}`,
+      createdAt: new Date().toISOString(),
+      dims, metrics,
+      filters: {
+        campaigns: filterCampaignIds.length ? filterCampaignIds : undefined,
+        period: { from: periodFrom, to: periodTo }
+      },
+      language: "ru",
+      emails: ["user@domain.ru"],
+      status: "В очереди"
+    };
+    if (filterBrands.length) rec.name += ` · бренды: ${filterBrands.join(", ")}`;
+    saveOrder(rec);
+    alert("Отчёт заказан (заглушка). Он появился во вкладке «Список отчётов».");
+  };
+
+  useEffect(()=>{
+    setPoolDims(p=> Array.from(new Set([...p, ...baseDims])).filter(x=>!dims.includes(x)));
+    setPoolMetrics(p=> Array.from(new Set([...p, ...baseMetrics])).filter(x=>!metrics.includes(x)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
   return (
-    <section onDragOver={onDragOver} onDrop={onDrop} className="rounded-2xl border bg-white p-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold">{title}</h3>
-        <button onClick={onClear} className="text-xs text-blue-600 hover:underline">Очистить</button>
+    <div className="mx-auto max-w-7xl p-6">
+      <Tabs />
+
+      {/* Верхняя панель */}
+      <div className="mb-4 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+        <div>
+          <div className="mb-1 text-xs font-medium uppercase text-gray-500">Тип отчёта</div>
+          <select className="w-full rounded-md border px-3 py-2 text-sm">
+            <option>Стандартный · Базовый по рекламодателям</option>
+            <option>Пользовательский</option>
+          </select>
+        </div>
+        <div>
+          <div className="mb-1 text-xs font-medium uppercase text-gray-500">Период</div>
+          <div className="flex gap-2">
+            <input type="date" value={periodFrom} onChange={e=>setFrom(e.target.value)} className="w-full rounded-md border px-3 py-2 text-sm"/>
+            <input type="date" value={periodTo}   onChange={e=>setTo(e.target.value)}   className="w-full rounded-md border px-3 py-2 text-sm"/>
+          </div>
+        </div>
+
+        {/* Фильтры — выпадающие с поиском */}
+        <div className="md:col-span-2">
+          <div className="mb-1 text-xs font-medium uppercase text-gray-500">Фильтры</div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <div className="mb-1 text-xs text-gray-500">Рекламные кампании</div>
+              <MultiSelect
+                options={campaignOptions}
+                selected={filterCampaignIds.map(String)}
+                onChange={(vals)=> setFilterCampaignIds(vals.map(v=>Number(v)))}
+                placeholder="Выберите одну или несколько РК"
+              />
+            </div>
+            <div>
+              <div className="mb-1 text-xs text-gray-500">Бренды</div>
+              <MultiSelect
+                options={brandOptions}
+                selected={filterBrands}
+                onChange={setFilterBrands}
+                placeholder="Выберите бренды"
+              />
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
+            {filterCampaignIds.length>0 && <span className="rounded-full bg-gray-50 px-2 py-0.5 ring-1 ring-gray-200">РК: {filterCampaignIds.join(", ")}</span>}
+            {filterBrands.length>0 && <span className="rounded-full bg-gray-50 px-2 py-0.5 ring-1 ring-gray-200">Бренды: {filterBrands.join(", ")}</span>}
+          </div>
+        </div>
       </div>
-      {hint && <p className="text-sm text-gray-500 mt-1">{hint}</p>}
-      <div className="mt-3 flex flex-wrap gap-2">
-        {items.map(v=>(
-          <span key={v} className="group inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm bg-slate-50">
-            {v}
-            <button
-              onClick={()=>onRemove(v)}
-              className="rounded-full border px-1 text-xs text-gray-500 hover:bg-white"
-              title="Удалить"
-            >
-              ×
-            </button>
-          </span>
-        ))}
-        {items.length===0 && <span className="text-sm text-gray-400">Перетащите элементы сюда</span>}
+
+      {/* DnD зоны */}
+      <div className="mb-4 grid gap-4 md:grid-cols-2">
+        <section className="rounded-xl border bg-white p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-sm font-semibold">Срез (перетащите поля)</div>
+            <small className="text-gray-500">Источник: объектная модель</small>
+          </div>
+          <div onDrop={e=>onDropTo(e,"dims")} onDragOver={onDragOver}
+               className="min-h-[60px] rounded-lg border border-dashed p-2">
+            {dims.length===0 && <div className="text-sm text-gray-400">Перетащите поля сюда</div>}
+            <div className="flex flex-wrap gap-2">
+              {dims.map(d=>(
+                <span key={d} className="group inline-flex items-center gap-1 rounded-full bg-sky-600 px-3 py-1 text-xs text-white">
+                  {d}<button onClick={()=>{
+                    setDims(dims.filter(x=>x!==d));
+                    setPoolDims(Array.from(new Set([...poolDims, d])));
+                  }} className="opacity-70 group-hover:opacity-100">×</button>
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="mt-3 text-xs text-gray-500">Доступные поля</div>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {poolDims.map(d=>(
+              <button key={d} draggable onDragStart={e=>onDragStart(e,d,"dims")}
+                className="rounded-full bg-white px-3 py-1 text-xs text-sky-700 ring-1 ring-sky-600 hover:bg-sky-50">
+                {d}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-xl border bg-white p-4">
+          <div className="mb-2 text-sm font-semibold">Метрики</div>
+          <div onDrop={e=>onDropTo(e,"metrics")} onDragOver={onDragOver}
+               className="min-h-[60px] rounded-lg border border-dashed p-2">
+            {metrics.length===0 && <div className="text-sm text-gray-400">Перетащите метрики сюда</div>}
+            <div className="flex flex-wrap gap-2">
+              {metrics.map(m=>(
+                <span key={m} className="group inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-xs text-white">
+                  {m}<button onClick={()=>{
+                    setMetrics(metrics.filter(x=>x!==m));
+                    setPoolMetrics(Array.from(new Set([...poolMetrics, m])));
+                  }} className="opacity-70 group-hover:opacity-100">×</button>
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="mt-3 text-xs text-gray-500">Доступные метрики</div>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {poolMetrics.map(m=>(
+              <button key={m} draggable onDragStart={e=>onDragStart(e,m,"metrics")}
+                className="rounded-full bg-white px-3 py-1 text-xs text-emerald-700 ring-1 ring-emerald-600 hover:bg-emerald-50">
+                {m}
+              </button>
+            ))}
+          </div>
+        </section>
       </div>
-    </section>
+
+      {/* Предпросмотр */}
+      <section className="mb-4 rounded-xl border bg-white">
+        <div className="flex items-center justify-between p-3">
+          <div className="text-sm font-semibold">Пример отчёта</div>
+          <div className="text-xs text-gray-500">Колонки формируются из Среза и Метрик</div>
+        </div>
+        <div className="overflow-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr>
+                {dims.map(h=> <th key={h} className="bg-gray-100 p-2 text-left">{h}</th>)}
+                {metrics.map(h=> <th key={h} className="bg-gray-100 p-2 text-left">{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {preview.map((r,i)=>(
+                <tr key={i} className="odd:bg-white even:bg-gray-50">
+                  {dims.map(h=> <td key={h} className="border-t p-2">{(r as any)[h]}</td>)}
+                  {metrics.map(h=> <td key={h} className="border-t p-2">{(r as any)[h]}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Действия */}
+      <div className="flex flex-wrap gap-2">
+        <button onClick={placeOrder} className="rounded-full bg-sky-600 px-4 py-2 text-sm text-white hover:bg-sky-700">
+          Заказать отчёт
+        </button>
+        <Link href="/builder/schedule" className="rounded-full bg-white px-4 py-2 text-sm text-sky-700 ring-1 ring-sky-600 hover:bg-sky-50">
+          Поставить на расписание
+        </Link>
+      </div>
+    </div>
   );
 }
-
-function norm(s: string){ return s.toLowerCase().normalize("NFKD"); }

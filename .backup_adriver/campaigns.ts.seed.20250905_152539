@@ -1,0 +1,98 @@
+// Lightweight client-only store for prototype (no backend)
+
+export type Campaign = {
+  id: number;
+  name: string;
+  brand?: string;
+  advertiser?: string;
+  createdAt: string; // ISO
+  status: "Активна" | "Не активна";
+  type: "Собственная" | "Делегированная";
+  pids?: number[];
+};
+
+const K_CAMPS = "adr_campaigns";
+const K_CTX   = "adr_ctx";
+
+const hasWin = () => typeof window !== "undefined";
+const readJSON = <T,>(k: string, fallback: T): T => {
+  if (!hasWin()) return fallback as T;
+  try { const v = localStorage.getItem(k); return v ? JSON.parse(v) as T : fallback; } catch { return fallback; }
+};
+const writeJSON = (k: string, v: any) => { if (hasWin()) localStorage.setItem(k, JSON.stringify(v)); };
+
+// ----- Seed data (однократно)
+(() => {
+  const existing = readJSON<Campaign[]>(K_CAMPS, []);
+  if (existing.length) return;
+  const now = Date.now();
+  const iso = (dms:number)=> new Date(dms).toISOString();
+  const sample: Campaign[] = [
+    { id: 819306, name: "Летувль_охват_август", brand: "Бренд 1", advertiser: "Рекламодатель A", createdAt: iso(now-40*864e5), status:"Активна", type:"Собственная", pids:[101,102,103] },
+    { id: 817144, name: "c2c_auto_avito_select_t1_jan-feb_2025_byps", brand: "Бренд 2", advertiser: "Рекламодатель A", createdAt: iso(now-80*864e5), status:"Активна", type:"Делегированная", pids:[201,202] },
+    { id: 815459, name: "Default AD", brand: "Бренд 3", advertiser: "Рекламодатель B", createdAt: iso(now-120*864e5), status:"Не активна", type:"Собственная", pids:[301] },
+    { id: 815931, name: "Test1", brand: "Бренд 2", advertiser: "Рекламодатель C", createdAt: iso(now-10*864e5), status:"Активна", type:"Собственная", pids:[401,402,403,404] },
+    { id: 4471765, name: "Yandex", brand: "", advertiser: "", createdAt: iso(now-365*864e5), status:"Не активна", type:"Делегированная", pids:[501] },
+  ];
+  writeJSON(K_CAMPS, sample);
+})();
+
+// ----- Public API
+export const listCampaigns = (): Campaign[] => {
+  const arr = readJSON<Campaign[]>(K_CAMPS, []);
+  return arr.map(c => ({
+    ...c,
+    id: Number(c.id),
+    name: String(c.name),
+    brand: c.brand ?? "",
+    advertiser: c.advertiser ?? "",
+    createdAt: c.createdAt || new Date().toISOString(),
+    status: c.status === "Активна" ? "Активна" : "Не активна",
+    type: c.type === "Делегированная" ? "Делегированная" : "Собственная",
+    pids: Array.isArray(c.pids) ? c.pids : [],
+  }));
+};
+
+// Экспорт: создаём .xlsx (контент CSV; ок для прототипа)
+export const exportExcel = (rows?: Campaign[]) => {
+  const R = (rows && rows.length ? rows : listCampaigns());
+  const data = R.map(c => ([
+    c.id,
+    c.name.replace(/\n/g," "),
+    c.brand || "",
+    c.advertiser || "",
+    c.type,
+    c.status,
+    c.createdAt,
+    (c.pids||[]).join(", "),
+  ]));
+  const header = ["ID","Название","Бренд","Рекламодатель","Тип","Статус","Дата создания","PIDs"];
+  const csv = [header, ...data]
+    .map(r => r.map(x => {
+      const s = String(x ?? "");
+      return /[",;\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+    }).join(";"))
+    .join("\n");
+  if (hasWin()) {
+    const blob = new Blob([csv], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `RK_export_${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.click(); URL.revokeObjectURL(a.href);
+  }
+};
+
+// Контекст экрана
+export type Ctx = Partial<{
+  q: string;
+  own: boolean;
+  delegated: boolean;
+  status: "all"|"active"|"inactive";
+  groupBy: "none"|"brand"|"adv"|"tree";
+  collapsed: string[];
+}>;
+export const readCtx = (): Ctx => readJSON<Ctx>(K_CTX, {});
+export const saveCtx = (patch: Ctx) => writeJSON(K_CTX, { ...readCtx(), ...patch });
+
+// Служебная запись (если понадобиться править кампании программно)
+export const __saveCampaignsUnsafe = (items: Campaign[]) => writeJSON(K_CAMPS, items);

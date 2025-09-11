@@ -1,0 +1,247 @@
+'use client';
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import {
+  listCampaigns, applyFilters, exportCsv,
+  softDeleteCampaigns, readCtx, saveCtx, type Campaign, type Ctx
+} from "@/lib/campaigns";
+import { logEvent } from "@/lib/analytics";
+
+function Tabs() {
+  const path = usePathname();
+  const Tab = ({href,label}:{href:string;label:string}) => (
+    <Link href={href}
+      className={`rounded-full px-3 py-1.5 text-sm ${path===href? "bg-sky-600 text-white":"bg-white text-sky-700 ring-1 ring-sky-600 hover:bg-sky-50"}`}>
+      {label}
+    </Link>
+  );
+  return (
+    <div className="mb-4 flex flex-wrap gap-2">
+      <Tab href="/campaigns" label="РК"/>
+      <Tab href="/campaigns/groups" label="Группы"/>
+      <Tab href="/campaigns/deleted" label="Удалённые"/>
+    </div>
+  );
+}
+
+export default function CampaignsPage(){
+  const router = useRouter();
+  const params = useSearchParams();
+
+  // контекст (localStorage + URL)
+  const initial:Ctx = readCtx();
+  const [q, setQ] = useState(params.get("q") ?? (initial.q||""));
+  const [groupBy, setGroupBy] = useState((params.get("group") ?? (initial.groupByBrand? "brand":"none")) === "brand");
+  const [own, setOwn] = useState((params.get("own") ?? (initial.own? "1":"0")) === "1");
+  const [delegated, setDelegated] = useState((params.get("deleg") ?? (initial.delegated? "1":"0")) === "1");
+  const [status, setStatus] = useState<"all"|"active"|"inactive">((params.get("status") as any) || (initial.status||"all"));
+
+  const allCamps = listCampaigns();
+
+  // применённый список
+  const ctx:Ctx = useMemo(()=>({
+    q, groupByBrand:groupBy, own, delegated, status
+  }),[q,groupBy,own,delegated,status]);
+
+  const list = useMemo(()=> applyFilters(allCamps, ctx), [allCamps, ctx]);
+
+  // группировка + сворачивание
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set(readCtx().collapsed || []));
+  useEffect(()=> saveCtx({ collapsed: Array.from(collapsed) }), [collapsed]);
+
+  // выбор и массовые действия
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const toggleSel = (id:number) => setSelected(prev=>{const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); return n;});
+  const clearSel = ()=> setSelected(new Set());
+  const selectIds = Array.from(selected);
+
+  const gotoDashboard = ()=> { if(selectIds.length===0) return; logEvent("open_dashboard", {ids:selectIds}); router.push(`/dashboard?ids=${selectIds.join(",")}`); };
+  const gotoBuilder  = ()=> { if(selectIds.length===0) return; logEvent("open_builder",  {ids:selectIds}); router.push(`/builder?ids=${selectIds.join(",")}`); };
+  const exportCsvAction = ()=> exportCsv(list.filter(c=>selected.has(c.id)));
+  const deleteAction = ()=> {
+    if(selectIds.length===0) return;
+    if(confirm(`Удалить ${selectIds.length} камп.? Они попадут во вкладку «Удалённые».`)){
+      softDeleteCampaigns(selectIds);
+      clearSel();
+      router.refresh();
+    }
+  };
+  const saveGroupAction = ()=> {
+    const name = prompt("Название группы:");
+    if(!name) return;
+    const g = { id:"g"+Date.now(), name, description:"", campaignIds: selectIds, updatedAt:new Date().toISOString() };
+    import("@/lib/campaigns").then(m=> m.saveGroup(g));
+    alert("Сохранено в «Группы».");
+  };
+
+  // сохранить контекст + URL
+  useEffect(()=>{
+    saveCtx(ctx);
+    const qs = new URLSearchParams();
+    if(q) qs.set("q", q);
+    if(groupBy) qs.set("group","brand");
+    qs.set("own",  own ? "1":"0");
+    qs.set("deleg",delegated ? "1":"0");
+    if(status!=="all") qs.set("status", status);
+    router.replace(`/campaigns?${qs.toString()}`);
+  }, [ctx, router]);
+
+  // подсветка поиска
+  const mark = (text:string)=> {
+    const query = q.trim();
+    if(!query) return text;
+    const re = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "ig");
+    return text.split(re).map((chunk, i) =>
+      re.test(chunk) ? <mark key={i} className="bg-yellow-200">{chunk}</mark> : <span key={i}>{chunk}</span>
+    );
+  };
+
+  // группировка
+  const byBrand = useMemo(()=>{
+    if(!groupBy) return { "Все кампании": list };
+    const map:Record<string,Campaign[]> = {};
+    list.forEach(c=>{ (map[c.brand] ||= []).push(c); });
+    return map;
+  }, [list, groupBy]);
+
+  return (
+    <div className="mx-auto max-w-7xl p-6">
+      <Tabs/>
+
+      <header className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-gray-600">Поиск</label>
+          <input value={q} onChange={e=>{ setQ(e.target.value); logEvent("search", {q:e.target.value}); }}
+                 placeholder="ID, название, бренд"
+                 className="rounded-md border px-3 py-1.5 text-sm"/>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={groupBy} onChange={e=>setGroupBy(e.target.checked)} />
+          Бренд
+        </label>
+
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={own} onChange={e=>setOwn(e.target.checked)} />
+          Собственные
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={delegated} onChange={e=>setDelegated(e.target.checked)} />
+          Делегированные
+        </label>
+
+        <label className="flex items-center gap-2 text-sm">
+          Статус
+          <select value={status} onChange={e=>setStatus(e.target.value as any)} className="rounded-md border px-2 py-1.5 text-sm">
+            <option value="all">Все</option>
+            <option value="active">Активные</option>
+            <option value="inactive">Неактивные</option>
+          </select>
+        </label>
+
+        <div className="ml-auto flex gap-2">
+          <Link href="/mediaplan/upload" className="rounded-full bg-sky-600 px-3 py-1.5 text-sm text-white hover:bg-sky-700">Загрузить медиаплан</Link>
+        </div>
+      </header>
+
+      {/* Панель массовых действий */}
+      {selected.size>0 && (
+        <div className="mb-3 flex items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 ring-1 ring-sky-200">
+          <div className="text-sm text-sky-900">Выбрано: <b>{selected.size}</b></div>
+          <button onClick={gotoDashboard} title="Открыть дашборд для выбранных" className="rounded-full bg-sky-600 px-3 py-1 text-xs text-white">📊 Дашборд</button>
+          <button onClick={gotoBuilder}  title="Открыть конструктор для выбранных" className="rounded-full bg-white px-3 py-1 text-xs text-sky-700 ring-1 ring-sky-600">🧩 Конструктор</button>
+          <button onClick={exportCsvAction} title="Экспорт в CSV" className="rounded-full bg-white px-3 py-1 text-xs text-sky-700 ring-1 ring-sky-600">⬇️ Экспорт</button>
+          <button onClick={saveGroupAction} title="Сохранить в Группу" className="rounded-full bg-white px-3 py-1 text-xs text-sky-700 ring-1 ring-sky-600">💾 Группа</button>
+          <button onClick={deleteAction}     title="Удалить выбранные" className="rounded-full bg-white px-3 py-1 text-xs text-red-700 ring-1 ring-red-600">🗑️ Удалить</button>
+          <button onClick={clearSel}         title="Сбросить выбор" className="ml-auto rounded-full bg-white px-3 py-1 text-xs text-gray-700 ring-1 ring-gray-300">✖️ Сбросить</button>
+        </div>
+      )}
+
+      {/* Список (по брендам или плоский) */}
+      <div className="space-y-6">
+        {Object.entries(byBrand).map(([brand, items])=>(
+          <section key={brand} className="rounded-2xl border bg-white p-4 shadow-sm">
+            {Object.keys(byBrand).length>1 && (
+              <div className="mb-2 flex items-center justify-between">
+                <button onClick={()=>setCollapsed(prev=>{const n=new Set(prev); n.has(brand)? n.delete(brand): n.add(brand); return n;})}
+                        className="text-left text-xl font-semibold">
+                  {collapsed.has(brand) ? "▶" : "▼"} {brand} <span className="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{items.length}</span>
+                </button>
+                <label className="flex items-center gap-2 text-xs">
+                  <input type="checkbox"
+                         checked={items.every(r=>selected.has(r.id))}
+                         onChange={e=>{
+                           const allIds = items.map(i=>i.id);
+                           setSelected(prev=>{
+                             const n=new Set(prev);
+                             allIds.forEach(id=> e.target.checked ? n.add(id) : n.delete(id));
+                             return n;
+                           });
+                         }}/>
+                  выбрать всё
+                </label>
+              </div>
+            )}
+
+            {!collapsed.has(brand) && (
+              <div className="overflow-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr>
+                      <th className="bg-gray-100 p-2 w-8"></th>
+                      <th className="bg-gray-100 p-2 text-left">ID</th>
+                      <th className="bg-gray-100 p-2 text-left">Название</th>
+                      <th className="bg-gray-100 p-2 text-left">Рекламодатель</th>
+                      <th className="bg-gray-100 p-2 text-left">Тип</th>
+                      <th className="bg-gray-100 p-2 text-left">Статус</th>
+                      <th className="bg-gray-100 p-2 text-right">Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map(c=>(
+                      <tr key={c.id} className="odd:bg-white even:bg-gray-50 hover:bg-sky-50">
+                        <td className="border-t p-2">
+                          <input type="checkbox" checked={selected.has(c.id)} onChange={()=>toggleSel(c.id)} aria-label="Выбрать кампанию"/>
+                        </td>
+                        <td className="border-t p-2 font-mono text-sky-700 underline-offset-2 hover:underline">
+                          <Link href={`/campaigns/new?id=${c.id}`}>{c.id}</Link>
+                        </td>
+                        <td className="border-t p-2 text-sky-700 underline-offset-2 hover:underline">
+                          <Link href={`/campaigns/new?id=${c.id}`}>{mark(c.name)}</Link>
+                        </td>
+                        <td className="border-t p-2">{c.advertiser}</td>
+                        <td className="border-t p-2">{c.type==="Делегированная" ? <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-700">Делегированная</span> : "Собственная"}</td>
+                        <td className="border-t p-2">
+                          {c.status==="Активна"
+                            ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">Активна</span>
+                            : <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-700">Не активна</span>}
+                        </td>
+                        <td className="border-t p-2 text-right" data-no-rownav>
+                          {c.canDashboard && (
+                            <Link href={`/dashboard?ids=${c.id}`} title="Дашборд" className="mr-1 rounded-full bg-sky-600 px-2 py-1 text-xs text-white">📊</Link>
+                          )}
+                          {c.canBuilder && (
+                            <Link href={`/builder?ids=${c.id}`} title="Конструктор" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">🧩</Link>
+                          )}
+                          <button onClick={()=>exportCsv([c])} title="Экспорт CSV" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">⬇️</button>
+                          <button onClick={()=>{
+                            if(confirm("Удалить кампанию? Она попадёт во вкладку «Удалённые»."))
+                              softDeleteCampaigns([c.id]), router.refresh();
+                          }} title="Удалить кампанию" className="rounded-full bg-white px-2 py-1 text-xs text-red-700 ring-1 ring-red-600">🗑️</button>
+                        </td>
+                      </tr>
+                    ))}
+                    {items.length===0 && (
+                      <tr><td colSpan={7} className="py-8 text-center text-gray-500">Ничего не найдено</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}

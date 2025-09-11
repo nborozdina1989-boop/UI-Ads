@@ -1,0 +1,13 @@
+export type AnalyticEvent = { ts:number; name:string; payload?: any };
+const K = "adriver/analytics";
+export const logEvent = (name:string, payload?:any) => {
+  try {
+    const a:AnalyticEvent[] = JSON.parse(localStorage.getItem(K) || "[]");
+    a.push({ ts: Date.now(), name, payload });
+    localStorage.setItem(K, JSON.stringify(a));
+    console.log("[analytics]", name, payload);
+  } catch {}
+};
+export const listEvents = ():AnalyticEvent[] => {
+  try { return JSON.parse(localStorage.getItem(K) || "[]"); } catch { return []; }
+};

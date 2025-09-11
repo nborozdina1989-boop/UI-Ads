@@ -1,0 +1,65 @@
+'use client';
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { listCampaigns, type Campaign } from "@/lib/campaigns";
+import { listGroups, deleteGroup, type Group } from "@/lib/groups";
+
+export default function CampaignGroupsPage(){
+  const [mounted, setMounted] = useState(false);
+  useEffect(()=>{ setMounted(true); },[]);
+  const [data, setData] = useState<Group[]>([]);
+  useEffect(()=>{ setData(listGroups()); }, []);
+  const camps = useMemo(()=> listCampaigns(), []);
+  const getCamp = (id:number): Campaign | undefined => camps.find(c=>c.id===id);
+
+  return (
+    <div className="mx-auto max-w-7xl p-6">
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Link href="/campaigns" className="rounded-full px-3 py-1.5 text-sm bg-white text-sky-700 ring-1 ring-sky-600">РК</Link>
+        <Link href="/campaigns/groups" className="rounded-full px-3 py-1.5 text-sm bg-sky-600 text-white">Группы</Link>
+        <Link href="/campaigns/archive" className="rounded-full px-3 py-1.5 text-sm bg-white text-sky-700 ring-1 ring-sky-600">Архив</Link>
+      </div>
+
+      {!mounted ? (
+        <div className="rounded-2xl border bg-white p-8 text-gray-500">Загрузка…</div>
+      ) : (
+        <section className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-xl font-semibold">Мои группы</h2>
+          </div>
+          <div className="overflow-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr>
+                  <th className="bg-gray-100 p-2 text-left">Название</th>
+                  <th className="bg-gray-100 p-2 text-left">Описание</th>
+                  <th className="bg-gray-100 p-2 text-left">Кампании</th>
+                  <th className="bg-gray-100 p-2 text-left">Создана</th>
+                  <th className="bg-gray-100 p-2 text-right">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.map(g=>(
+                  <tr key={g.id} className="odd:bg-white even:bg-gray-50">
+                    <td className="border-t p-2">{g.name}</td>
+                    <td className="border-t p-2">{g.description||"—"}</td>
+                    <td className="border-t p-2">
+                      {(g.campaignIds||[]).map(id => getCamp(id)?.name || id).join(", ")}
+                    </td>
+                    <td className="border-t p-2">{new Date(g.createdAt).toLocaleDateString("ru-RU")}</td>
+                    <td className="border-t p-2 text-right">
+                      <Link href={`/dashboard?ids=${g.campaignIds.join(",")}`} className="mr-1 rounded-full bg-sky-600 px-2 py-1 text-xs text-white">📊</Link>
+                      <Link href={`/builder?ids=${g.campaignIds.join(",")}`}   className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">🧩</Link>
+                      <button onClick={()=>{ if(confirm("Удалить группу?")){ deleteGroup(g.id); setData(listGroups()); } }} className="rounded-full bg-white px-2 py-1 text-xs text-gray-700 ring-1 ring-gray-300">🗑️</button>
+                    </td>
+                  </tr>
+                ))}
+                {data.length===0 && (<tr><td colSpan={5} className="py-8 text-center text-gray-500">Групп пока нет</td></tr>)}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
