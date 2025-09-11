@@ -160,8 +160,3 @@ export const createGroup = (name:string, campaignIds:number[]):Group => {
   const next = [g, ...all]; saveGroups(next); return g;
 };
 // ==================================
-
-// proto-build compat stubs
-export function listDeleted(){ return []; }
-export function purgeOldDeleted(){ return 0; }
-export function restoreCampaigns(_ids:string[] = []){ return { restored: _ids.length }; }

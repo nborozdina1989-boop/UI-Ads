@@ -1,4 +1,3 @@
-import YandexMetrika from "@/components/YandexMetrika";
 import AnalyticsClient from "@/components/AnalyticsClient";
 import VisitBadge from "@/components/VisitBadge";
 import type { Metadata } from "next";
@@ -31,7 +30,6 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
-        <YandexMetrika />
         <VisitBadge />
         <AnalyticsClient />
       </body>

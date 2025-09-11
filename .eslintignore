@@ -1,0 +1,3 @@
+.backups
+**/page.backup*.tsx
+**/page.before-*.tsx

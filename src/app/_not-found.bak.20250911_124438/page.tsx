@@ -1,12 +1,12 @@
 import { Suspense } from 'react';
-import GenerationClientPage from '@/app/_pages/GenerationClientPage';
+import NotFoundClient from '@/app/_pages/NotFoundClient';
 
 export const dynamic = 'force-dynamic';
 
-export default function Page() {
+export default function NotFoundPage() {
   return (
     <Suspense fallback={null}>
-      <GenerationClientPage />
+      <NotFoundClient />
     </Suspense>
   );
 }

@@ -1,6 +1,3 @@
-import YandexMetrika from "@/components/YandexMetrika";
-import AnalyticsClient from "@/components/AnalyticsClient";
-import VisitBadge from "@/components/VisitBadge";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -31,9 +28,6 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
-        <YandexMetrika />
-        <VisitBadge />
-        <AnalyticsClient />
       </body>
     </html>
   );

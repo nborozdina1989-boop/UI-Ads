@@ -351,10 +351,3 @@ export function saveQuickDraft(defaultName = "Черновик медиапла�
   saveDraft(d);
   return d;
 }
-
-// proto-build compat
-export const REQUIRED_KEYS: string[] = [];
-export const TARGET_KEYS: string[] = [];
-export { loadMappingRU as loadMapping };
-export { saveMappingRU as saveMapping };
-export { applyMappingRU as applyMapping };
