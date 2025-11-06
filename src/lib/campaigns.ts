@@ -289,3 +289,13 @@ export function getCampaignStats(id: number): CampaignStats {
     total: { imps: baseImps, clicks: baseClk },
   };
 }
+
+const TAGS_KEY = "campaignTagsV1";
+function loadTagsMap(): Record<string, string[]> { if (typeof window === "undefined") return {}; try { return JSON.parse(localStorage.getItem(TAGS_KEY) || "{}") || {}; } catch { return {}; } }
+function saveTagsMap(m: Record<string, string[]>) { if (typeof window === "undefined") return; localStorage.setItem(TAGS_KEY, JSON.stringify(m)); }
+const normTag = (t: string) => t.trim().toLowerCase().replace(/\s+/g, " ").slice(0,48);
+export function getCampaignTags(id: number): string[] { const m = loadTagsMap(); return (m[String(id)] || []).slice(); }
+export function setCampaignTags(id: number, tags: string[]) { const m = loadTagsMap(); m[String(id)] = Array.from(new Set(tags.map(normTag).filter(Boolean))); saveTagsMap(m); }
+export function addCampaignTag(id:number, tag:string){ const curr=getCampaignTags(id); setCampaignTags(id,[...curr,tag]); }
+export function removeCampaignTag(id:number, tag:string){ const t=normTag(tag); setCampaignTags(id,getCampaignTags(id).filter(x=>x!==t)); }
+export function getAllTagsMap(): Record<number,string[]>{ const raw=loadTagsMap(); const out:Record<number,string[]>{}; Object.keys(raw).forEach(k=>out[Number(k)]=raw[k]); return out; }
