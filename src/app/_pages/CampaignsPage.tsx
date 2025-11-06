@@ -47,6 +47,14 @@ function fmtPct(clicks:number, imps:number){
   const v = (clicks / imps) * 100;
   return v.toFixed(2).replace('.', ',') + '%';
 }
+function normStats(st: CampaignStats): CampaignStats {
+  const clamp = (n:number)=> Math.max(0, Math.trunc(n));
+  return {
+    today:     { imps: clamp(st.today.imps),     clicks: clamp(st.today.clicks) },
+    yesterday: { imps: clamp(st.yesterday.imps), clicks: clamp(st.yesterday.clicks) },
+    total:     { imps: clamp(st.total.imps),     clicks: clamp(st.total.clicks) }
+  };
+}
 
 function TriStateCheckbox({
   checked, indeterminate, onChange, ariaLabel
@@ -243,7 +251,7 @@ export default function CampaignsPage(){
         <th className="bg-gray-100 p-2 w-8"></th>
         <th className="bg-gray-100 p-2 w-8"></th>
         <th className="bg-gray-100 p-2 text-left">ID</th>
-        <th className="bg-gray-100 p-2 w-16 text-center">Сост.</th>
+        <th className="bg-gray-100 p-2 text-left w-16">Сост.</th>
         <th className="bg-gray-100 p-2 text-left">Название / Даты</th>
         <th className="bg-gray-100 p-2 text-right w-36">Показы</th>
         <th className="bg-gray-100 p-2 text-right w-36">Клики</th>
@@ -273,6 +281,7 @@ export default function CampaignsPage(){
       <td className="border-t p-2 font-mono text-sky-700 underline-offset-2 hover:underline">
         <Link href={`/campaigns/${c.id}${fromSuffix}`}>{c.id}</Link>
       </td>
+      <td className="border-t p-2"><StatusTypeCell type={c.type} status={c.status} /></td>
       <td className="border-t p-2 text-sky-700 underline-offset-2 hover:underline">
         <Link href={`/campaigns/${c.id}${fromSuffix}`}>{c.name}</Link>
         <div className="text-xs text-gray-500">
@@ -329,7 +338,6 @@ export default function CampaignsPage(){
       ) : (
         <>
           <CampaignFilters
-import StatusTypeCell from "@/components/StatusTypeCell";
             q={q}
             onQChange={setQ}
             status={status}
@@ -415,7 +423,7 @@ import StatusTypeCell from "@/components/StatusTypeCell";
                           <TableHead/>
                           <tbody>
                             {rows.map((c:Campaign)=> <Row key={c.id} c={c} />)}
-                            {rows.length===0 && (<tr><td colSpan={6} className="py-8 text-center text-gray-500">Ничего не найдено</td></tr>)}
+                            {rows.length===0 && (<tr><td colSpan={9} className="py-8 text-center text-gray-500">Ничего не найдено</td></tr>)}
                           </tbody>
                         </table>
                         {total > 10 && (
