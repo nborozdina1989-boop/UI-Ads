@@ -6,8 +6,11 @@ type GroupMode = "none" | "brand" | "adv" | "tree";
 type SortMode = "created_desc" | "created_asc" | "name_asc" | "name_desc";
 
 interface Props {
-  q: string;
-  onQChange: (v: string) => void;
+  search: string;
+  onSearchChange: (v: string) => void;
+
+  tags: string;
+  onTagFilterChange: (v: string) => void;
 
   own: boolean;
   onOwnChange: (v: boolean) => void;
@@ -27,60 +30,103 @@ interface Props {
   sort: SortMode;
   onSortChange: (v: SortMode) => void;
 
-  idFilter: string;
-  onIdFilterChange: (v: string) => void;
+  // НОВОЕ: отдельные поиски
+  searchId: string;
+  onSearchIdChange: (v: string) => void;
 
-  brandFilter: string;
-  onBrandFilterChange: (v: string) => void;
+  searchName: string;
+  onSearchNameChange: (v: string) => void;
 
-  advFilter: string;
-  onAdvFilterChange: (v: string) => void;
+  searchBrand: string;
+  onSearchBrandChange: (v: string) => void;
 
-  tagFilter: string;
+  searchAdvertiser: string;
+  onSearchAdvertiserChange: (v: string) => void;
+
+  onReset: () => void;.(
+  search: string;
+  onSearchChange: (v: string) => void;
+
+  tags: string;
   onTagFilterChange: (v: string) => void;
+
+  own: boolean;
+  onOwnChange: (v: boolean) => void;
+
+  delegated: boolean;
+  onDelegatedChange: (v: boolean) => void;
+
+  status: "all" | "active" | "inactive";
+  onStatusChange: (v: "all" | "active" | "inactive") => void;
+
+  favOnly: boolean;
+  onFavChange: (v: boolean) => void;
+
+  groupMode: GroupMode;
+  onGroupChange: (v: GroupMode) => void;
+
+  sort: SortMode;
+  onSortChange: (v: SortMode) => void;
+
+  // НОВОЕ: отдельные поиски
+  searchId: string;
+  onSearchIdChange: (v: string) => void;
+
+  searchName: string;
+  onSearchNameChange: (v: string) => void;
+
+  searchBrand: string;
+  onSearchBrandChange: (v: string) => void;
+
+  searchAdvertiser: string;
+  onSearchAdvertiserChange: (v: string) => void;
+
+  onReset: () => void;=~/tagFilters*:/s?"":"
+  tagFilter: string;
+  onTagFilterChange: (v: string) => void;").
 }
 
-export default function CampaignFilters(props: Props) {
-  const {
-    q, onQChange,
-    own, onOwnChange,
-    delegated, onDelegatedChange,
-    status, onStatusChange,
-    favOnly, onFavChange,
-    groupMode, onGroupChange,
-    sort, onSortChange,
-    idFilter, onIdFilterChange,
-    brandFilter, onBrandFilterChange,
-    advFilter, onAdvFilterChange,
-    tagFilter, onTagFilterChange,
-  } = props;
+export default function CampaignFilters({
+  search,
+  onSearchChange,
+  tags,
+  onTagFilterChange,
+  own,
+  onOwnChange,
+  delegated,
+  onDelegatedChange,
+  status,
+  onStatusChange,
+  favOnly,
+  onFavChange,
+  groupMode,
+  onGroupChange,
+  sort,
+  onSortChange,
+  searchId,
+  onSearchIdChange,
+  searchName,
+  onSearchNameChange,
+  searchBrand,
+  onSearchBrandChange,
+  searchAdvertiser,
+  onSearchAdvertiserChange,
+  onReset,
+}: Props) {
+  const [showAdvanced, setShowAdvanced] = useState(true); // по умолчанию сейчас открыто, как на скрине
 
-  const [showAdvanced, setShowAdvanced] = useState(true);
-
-  const btnBase = "rounded-full px-3 py-1.5 text-sm transition-colors";
-  const btnOff  = "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200";
-  const btnOn   = "bg-sky-50 text-sky-700 border border-sky-200";
-
-  const resetAll = () => {
-    onQChange("");
-    onOwnChange(false);
-    onDelegatedChange(false);
-    onStatusChange("all");
-    onFavChange(false);
-    onGroupChange(groupMode);
-    onSortChange("created_desc");
-    onIdFilterChange("");
-    onBrandFilterChange("");
-    onAdvFilterChange("");
-    onTagFilterChange("");
-  };
+  const btnBase =
+    "rounded-full px-3 py-1.5 text-sm transition-colors";
+  const btnOff = "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200";
+  const btnOn = "bg-sky-50 text-sky-700 border border-sky-200";
 
   return (
     <div className="mb-4 rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+      {/* ряд 1 */}
       <div className="flex flex-wrap items-center gap-3">
         <input
-          value={q}
-          onChange={(e) => onQChange(e.target.value)}
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Поиск по названию / ID / бренду / рекламодателю"
           className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-400 focus:ring-0"
         />
@@ -96,7 +142,7 @@ export default function CampaignFilters(props: Props) {
 
         <button
           type="button"
-          onClick={resetAll}
+          onClick={onReset}
           className="text-sm text-sky-600 hover:text-sky-700"
         >
           Сбросить
@@ -110,6 +156,7 @@ export default function CampaignFilters(props: Props) {
         </Link>
       </div>
 
+      {/* ряд 2 (кнопки) */}
       {showAdvanced && (
         <>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -120,7 +167,6 @@ export default function CampaignFilters(props: Props) {
             >
               Свои
             </button>
-
             <button
               type="button"
               onClick={() => onDelegatedChange(!delegated)}
@@ -131,15 +177,18 @@ export default function CampaignFilters(props: Props) {
 
             <button
               type="button"
-              onClick={() => onStatusChange(status === "active" ? "all" : "active")}
+              onClick={() =>
+                onStatusChange(status === "active" ? "all" : "active")
+              }
               className={`${btnBase} ${status === "active" ? btnOn : btnOff}`}
             >
               Активные
             </button>
-
             <button
               type="button"
-              onClick={() => onStatusChange(status === "inactive" ? "all" : "inactive")}
+              onClick={() =>
+                onStatusChange(status === "inactive" ? "all" : "inactive")
+              }
               className={`${btnBase} ${status === "inactive" ? btnOn : btnOff}`}
             >
               Не активные
@@ -152,6 +201,13 @@ export default function CampaignFilters(props: Props) {
             >
               <span>⭐</span> Избранное
             </button>
+
+            <input
+              value={tagFilter}
+              onChange={(e) => onTagFilterChange(e.target.value)}
+              placeholder="Теги (через запятую)"
+              className="min-w-[180px] rounded-xl border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-sky-400 focus:ring-0"
+            />
 
             <select
               value={groupMode}
@@ -176,41 +232,41 @@ export default function CampaignFilters(props: Props) {
             </select>
           </div>
 
+          {/* ряд 3 — отдельные поиски */}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <span className="text-xs text-slate-400 pr-2">Доп. поиск:</span>
 
             <input
-              value={idFilter}
-              onChange={(e) => onIdFilterChange(e.target.value)}
+              value={searchId}
+              onChange={(e) => onSearchIdChange(e.target.value)}
               placeholder="ID"
               className="w-[90px] rounded-xl border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-sky-400"
             />
             <input
-              value={""}
-              onChange={() => {}}
+              value={searchName}
+              onChange={(e) => onSearchNameChange(e.target.value)}
               placeholder="РК"
               className="w-[150px] rounded-xl border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-sky-400"
-              style={{ pointerEvents: "none", opacity: 0.5 }}
             />
             <input
-              value={brandFilter}
-              onChange={(e) => onBrandFilterChange(e.target.value)}
+              value={searchBrand}
+              onChange={(e) => onSearchBrandChange(e.target.value)}
               placeholder="Бренд"
               className="w-[140px] rounded-xl border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-sky-400"
             />
             <input
-              value={advFilter}
-              onChange={(e) => onAdvFilterChange(e.target.value)}
+              value={searchAdvertiser}
+              onChange={(e) => onSearchAdvertiserChange(e.target.value)}
               placeholder="Рекламодатель"
               className="w-[160px] rounded-xl border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-sky-400"
             />
-            <input
-              type="text"
-              placeholder="Поиск по тегам"
-              value={tagFilter}
-              onChange={(e) => onTagFilterChange(e.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:border-sky-400"
-            />
+              <input
+                type="text"
+                placeholder="Поиск по тегам"
+                value={tagFilter}
+                onChange={(e) => onTagFilterChange(e.target.value)}
+                className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:border-sky-400"
+              />
           </div>
         </>
       )}

@@ -1,0 +1,3 @@
+'use client';
+import CampaignsPage from '@/app/_pages/CampaignsPage';
+export default function Page() { return <CampaignsPage/>; }

@@ -6,10 +6,11 @@ import { listCampaigns, exportExcel, readCtx, saveCtx, type Campaign } from "@/l
 import { getCampaignStats, type CampaignStats } from "@/lib/campaigns";
 import { getFavCampaignIds, toggleFavCampaign, isFavCampaign, getArchivedIds, archiveCampaigns } from "@/lib/archfav";
 import { createGroup } from "@/lib/campaigns";
-import { getCampaignStats, type CampaignStats } from "@/lib/campaigns";
 import { logEvent } from "@/lib/analytics";
-import StatusTypeCell from "@/components/StatusTypeCell";
 import CampaignFilters from "@/components/CampaignFilters";
+import TagPills from "@/components/TagPills";
+import { getCampaignTags, setCampaignTags, getAllTagsMap } from "@/lib/campaigns";
+import StatusTypeCell from "@/components/StatusTypeCell";
 
 function Tabs() {
   const path = usePathname();
@@ -48,6 +49,14 @@ function fmtPct(clicks:number, imps:number){
   const v = (clicks / imps) * 100;
   return v.toFixed(2).replace('.', ',') + '%';
 }
+function normStats(st: CampaignStats): CampaignStats {
+  const clamp = (n:number)=> Math.max(0, Math.trunc(n));
+  return {
+    today:     { imps: clamp(st.today.imps),     clicks: clamp(st.today.clicks) },
+    yesterday: { imps: clamp(st.yesterday.imps), clicks: clamp(st.yesterday.clicks) },
+    total:     { imps: clamp(st.total.imps),     clicks: clamp(st.total.clicks) }
+  };
+}
 
 function TriStateCheckbox({
   checked, indeterminate, onChange, ariaLabel
@@ -78,6 +87,8 @@ export default function CampaignsPage(){
   const [sort, setSort] = useState<SortMode>((params.get("sort") as SortMode) || "created_desc");
   const [favOnly, setFavOnly] = useState((params.get("fav")||"0")==="1");
 
+  const [tagsMap, setTagsMap] = useState<Record<number, string[]>>(()=>getAllTagsMap());
+
   // новые 4 фильтра
   const [idFilter, setIdFilter] = useState("");
   const [advFilter, setAdvFilter] = useState("");
@@ -106,7 +117,7 @@ export default function CampaignsPage(){
       // доп. фильтр: бренд
       .filter(c => !brandTerm || String(c.brand || "").toLowerCase().includes(brandTerm))
       // доп. фильтр: тег (пока ищем по имени, потом подключим реальные теги)
-      .filter(c => !tagTerm || String(c.name || "").toLowerCase().includes(tagTerm))
+      .filter(c => { const wanted = tagTerm.split(",").map(s=>s.trim().toLowerCase()).filter(Boolean); if (!tagTerm || !wanted.length) return true; const actual = (tagsMap[c.id] || getCampaignTags(c.id)).map(t=>t.toLowerCase()); return wanted.some(w => actual.includes(w)); })
       // статус
       .filter(c => status==="all" ? true : (status==="active" ? c.status==="Активна" : c.status!=="Активна"))
       // свои / делег
@@ -114,7 +125,7 @@ export default function CampaignsPage(){
       .filter(c => delegated ? c.type==="Делегированная" : true)
       // избранные
       .filter(c => favOnly ? favSet.has(c.id) : true);
-  }, [all, archivedSet, q, status, own, delegated, favOnly, favSet, idFilter, advFilter, brandFilter, tagFilter]);
+  }, [all, archivedSet, q, status, own, delegated, favOnly, favSet, idFilter, advFilter, brandFilter, tagFilter, tagsMap]);
 
   const sorted = useMemo(()=>{
     const arr = [...filtered];
@@ -225,6 +236,16 @@ export default function CampaignsPage(){
     alert(`Группа «${g.name}» сохранена (${g.campaignIds.length} камп.).`);
   };
 
+  const editTags = (id:number) => {
+    const curr = tagsMap[id] || getCampaignTags(id);
+    const next = prompt("Теги (через запятую)", curr.join(", "));
+    if (next===null) return;
+    const tags = next.split(",").map(s=>s.trim()).filter(Boolean);
+    setCampaignTags(id, tags);
+    setTagsMap(prev=>({ ...prev, [id]: tags }));
+  };
+
+
   useEffect(()=>{
     saveCtx({ q, own, delegated, status, groupBy: groupMode });
     const qs = new URLSearchParams();
@@ -244,17 +265,18 @@ export default function CampaignsPage(){
         <th className="bg-gray-100 p-2 w-8"></th>
         <th className="bg-gray-100 p-2 w-8"></th>
         <th className="bg-gray-100 p-2 text-left">ID</th>
+        <th className="bg-gray-100 p-2 text-left w-16">Сост.</th>
         <th className="bg-gray-100 p-2 text-left">Название / Даты</th>
-        <th className="bg-gray-100 p-2 text-right w-36">Сегодня</th>
-        <th className="bg-gray-100 p-2 text-right w-36">Вчера</th>
-        <th className="bg-gray-100 p-2 text-right w-36">Всего</th>
+        <th className="bg-gray-100 p-2 text-right w-36">Показы</th>
+        <th className="bg-gray-100 p-2 text-right w-36">Клики</th>
+        <th className="bg-gray-100 p-2 text-right w-36">CTR%</th>
         <th className="bg-gray-100 p-2 text-right">Действия</th>
       </tr>
     </thead>
   );
 
   const Row = ({c}:{c:Campaign}) => {
-  const st = getCampaignStats(c.id);
+  const st = normStats(getCampaignStats(c.id));
   return (
     <tr key={c.id} className="odd:bg-white even:bg-gray-50 hover:bg-sky-50">
       <td className="border-t p-2">
@@ -266,50 +288,31 @@ export default function CampaignsPage(){
         />
       </td>
       <td className="border-t p-2">
-        <button
-          aria-label={isFavCampaign(c.id) ? "Убрать из избранного" : "В избранное"}
-          onClick={()=>{ toggleFavCampaign(c.id); router.refresh(); }}
-          className="text-lg leading-none"
-        >
+        <button aria-label={isFavCampaign(c.id) ? "Убрать из избранного" : "В избранное"} onClick={()=>{ toggleFavCampaign(c.id); router.refresh(); }} className="text-lg leading-none">
           {isFavCampaign(c.id) ? "⭐" : "☆"}
         </button>
       </td>
       <td className="border-t p-2 font-mono text-sky-700 underline-offset-2 hover:underline">
         <Link href={`/campaigns/${c.id}${fromSuffix}`}>{c.id}</Link>
       </td>
+      <td className="border-t p-2"><StatusTypeCell type={c.type} status={c.status} /></td>
       <td className="border-t p-2 text-sky-700 underline-offset-2 hover:underline">
         <Link href={`/campaigns/${c.id}${fromSuffix}`}>{c.name}</Link>
         <div className="text-xs text-gray-500">
           Создана: {new Date(c.createdAt).toLocaleDateString("ru-RU")}
         </div>
+        <TagPills tags={(tagsMap[c.id] || getCampaignTags(c.id))} onAdd={() => addTagsQuick(c.id)} onRemove={(t) => removeTag(c.id, t)} />
       </td>
 
-      {/* Сегодня */}
-      <td className="border-t p-2 text-right">
-        <div className="font-mono text-xs">
-          <span className="text-gray-900">{fmtKM(st.today.imps)}</span>/
-          <span className="text-gray-900">{fmtKM(st.today.clicks)}</span>/
-          <span className="text-emerald-700">{fmtPct(st.today.clicks, st.today.imps)}</span>
-        </div>
-      </td>
-      {/* Вчера */}
-      <td className="border-t p-2 text-right">
-        <div className="font-mono text-xs">
-          <span className="text-gray-900">{fmtKM(st.yesterday.imps)}</span>/
-          <span className="text-gray-900">{fmtKM(st.yesterday.clicks)}</span>/
-          <span className="text-emerald-700">{fmtPct(st.yesterday.clicks, st.yesterday.imps)}</span>
-        </div>
-      </td>
-      {/* Всего */}
-      <td className="border-t p-2 text-right">
-        <div className="font-mono text-xs">
-          <span className="text-gray-900">{fmtKM(st.total.imps)}</span>/
-          <span className="text-gray-900">{fmtKM(st.total.clicks)}</span>/
-          <span className="text-emerald-700">{fmtPct(st.total.clicks, st.total.imps)}</span>
-        </div>
-      </td>
+      {/* Показы */}
+      <td className="border-t p-2 text-right">{fmtKM(Math.abs((st.total?.imps)||0))}</td>
+      {/* Клики */}
+      <td className="border-t p-2 text-right">{fmtKM(Math.abs((st.total?.clicks)||0))}</td>
+      {/* CTR% */}
+      <td className="border-t p-2 text-right"><span className="font-mono text-xs text-emerald-700">{fmtPct(Math.abs((st.total?.clicks)||0), Math.abs((st.total?.imps)||0))}</span></td>
 
       <td className="border-t p-2 text-right" data-no-rownav>
+          <button onClick={()=>editTags(c.id)} title="Теги кампании" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">🏷</button>
         <Link href={`/dashboard?ids=${c.id}`} title="Дашборд" className="mr-1 rounded-full bg-sky-600 px-2 py-1 text-xs text-white">📊</Link>
         <Link href={`/builder?ids=${c.id}`}   title="Конструктор" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">🧩</Link>
         <button onClick={()=>exportExcel([c])} title="Экспорт Excel" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">⬇️</button>
@@ -323,27 +326,7 @@ export default function CampaignsPage(){
       </td>
     </tr>
   );
-}; router.refresh(); }} className="text-lg leading-none">
-          {isFavCampaign(c.id) ? "⭐" : "☆"}
-        </button>
-      </td>
-      <td className="border-t p-2 font-mono text-sky-700 underline-offset-2 hover:underline">
-        <Link href={`/campaigns/${c.id}${fromSuffix}`}>{c.id}</Link>
-      </td>
-      <td className="border-t p-2"><StatusTypeCell type={c.type} status={c.status} /></td>
-      <td className="border-t p-2 text-sky-700 underline-offset-2 hover:underline">
-        <Link href={`/campaigns/${c.id}${fromSuffix}`}>{c.name}</Link>
-        <div className="text-xs text-gray-500">Создана: {new Date(c.createdAt).toLocaleDateString("ru-RU")}</div>
-      </td>
-<td className="border-t p-2 text-right" data-no-rownav>
-        <Link href={`/dashboard?ids=${c.id}`} title="Дашборд" className="mr-1 rounded-full bg-sky-600 px-2 py-1 text-xs text-white">📊</Link>
-        <Link href={`/builder?ids=${c.id}`}   title="Конструктор" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">🧩</Link>
-        <button onClick={()=>exportExcel([c])} title="Экспорт Excel" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">⬇️</button>
-        <button onClick={()=>{ if(confirm("Архивировать кампанию?")){ archiveCampaigns([c.id]); router.refresh(); }}} title="Архивировать" className="rounded-full bg-white px-2 py-1 text-xs text-amber-700 ring-1 ring-amber-600">🗄️</button>
-      </td>
-    </tr>
-  );
-
+};
   return (
     <div className="mx-auto max-w-7xl p-6">
       <Tabs/>
@@ -366,7 +349,7 @@ export default function CampaignsPage(){
             delegated={delegated}
             onDelegatedChange={setDelegated}
             favOnly={favOnly}
-            onFavOnlyChange={setFavOnly}
+            onFavChange={setFavOnly}
             idFilter={idFilter}
             onIdFilterChange={setIdFilter}
             advFilter={advFilter}
@@ -438,7 +421,7 @@ export default function CampaignsPage(){
                           <TableHead/>
                           <tbody>
                             {rows.map((c:Campaign)=> <Row key={c.id} c={c} />)}
-                            {rows.length===0 && (<tr><td colSpan={6} className="py-8 text-center text-gray-500">Ничего не найдено</td></tr>)}
+                            {rows.length===0 && (<tr><td colSpan={9} className="py-8 text-center text-gray-500">Ничего не найдено</td></tr>)}
                           </tbody>
                         </table>
                         {total > 10 && (

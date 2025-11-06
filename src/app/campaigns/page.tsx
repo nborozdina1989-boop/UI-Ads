@@ -1,5 +1,2 @@
-'use client';
-import CampaignsPage from '@/app/_pages/CampaignsPage';
-export default function Page() {
-  return <CampaignsPage />;
-}
+'use client'
+export { default } from '@/app/_pages/CampaignsPage'
