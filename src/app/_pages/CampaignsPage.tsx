@@ -302,7 +302,6 @@ export default function CampaignsPage(){
           Создана: {new Date(c.createdAt).toLocaleDateString("ru-RU").toLocaleDateString("ru-RU")}
         </div>
         <TagPills tags={(tagsMap[c.id] || getCampaignTags(c.id))} />
-        </div>
       </td>
 
       {/* Показы */}
