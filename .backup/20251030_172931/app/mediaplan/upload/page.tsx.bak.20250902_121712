@@ -1,0 +1,172 @@
+'use client';
+import React, { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import * as XLSX from "xlsx";
+import {
+  COLUMN_MAP, REQUIRED_KEYS, TARGET_KEYS,
+  MediaplanUpload, saveUpload, saveMapping, type Mapping
+} from "@/lib/mediaplan";
+
+/** Автопоиск строки заголовков */
+function detectHeaderRow(rows: any[][]): number {
+  const labels = Object.keys(COLUMN_MAP).map(x => x.toLowerCase());
+  let bestIdx = 0, bestScore = -1;
+  for (let i=0; i<Math.min(rows.length, 30); i++) {
+    const r = rows[i] || [];
+    const score = r.reduce((s: number, cell: any) => {
+      const v = String(cell||"").toLowerCase().trim();
+      return s + (labels.includes(v) ? 1 : 0);
+    }, 0);
+    if (score > bestScore) { bestScore = score; bestIdx = i; }
+  }
+  return bestIdx;
+}
+
+/** Автоматическое сопоставление «ключ → колонка» по известным названиям */
+function autoMap(headers: string[]): Mapping {
+  const mapping: Mapping = {};
+  for (const h of headers) {
+    const maybe = COLUMN_MAP[h.trim()] as any;
+    if (maybe) (mapping as any)[maybe] = h;
+  }
+  return mapping;
+}
+
+export default function UploadPage() {
+  const router = useRouter();
+  const [upload, setUpload] = useState<MediaplanUpload | null>(null);
+  const [mapping, setMapping] = useState<Mapping>({});
+
+  const coverage = useMemo(() => {
+    const ok = REQUIRED_KEYS.filter(k => mapping[k as any]);
+    return { ok: ok.length, total: REQUIRED_KEYS.length, ready: ok.length === REQUIRED_KEYS.length };
+  }, [mapping]);
+
+  async function handleFile(file: File) {
+    const buf = await file.arrayBuffer();
+    if (file.name.toLowerCase().endsWith(".csv")) {
+      // Небольшой CSV-парсер (на прототип)
+      const text = new TextDecoder("utf-8").decode(new Uint8Array(buf));
+      const lines = text.split(/\r?\n/).filter(l=>l.trim().length>0);
+      const cells = lines.map(l => l.split(","));
+      const headerIdx = 0; // в CSV считаем, что первая строка — заголовок
+      const headers = cells[headerIdx].map(s=>s.trim());
+      const rowsRaw = cells.slice(headerIdx+1).map(arr => {
+        const o: Record<string, any> = {};
+        arr.forEach((v,i)=> o[headers[i]] = v);
+        return o;
+      });
+      const u: MediaplanUpload = { fileName: file.name, sheet: "csv", headerRow: headerIdx+1, headers, rowsRaw };
+      setUpload(u);
+      const m = autoMap(headers); setMapping(m); saveUpload(u); saveMapping(m);
+      return;
+    }
+
+    const wb = XLSX.read(buf, { type: "array" });
+    const sheetName = wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, raw: true }) as any[][];
+    const headerIdx = detectHeaderRow(rows);
+    const headers = (rows[headerIdx] || []).map(x => String(x||"").trim());
+    const body = rows.slice(headerIdx+1).filter(r => (r||[]).some(c => c!=null && String(c).trim()!==""));
+    const rowsRaw = body.map(r => {
+      const o: Record<string, any> = {};
+      headers.forEach((h, i) => o[h] = r[i]);
+      return o;
+    });
+
+    const u: MediaplanUpload = { fileName: file.name, sheet: sheetName, headerRow: headerIdx+1, headers, rowsRaw };
+    setUpload(u);
+    const m = autoMap(headers); setMapping(m); saveUpload(u); saveMapping(m);
+  }
+
+  function goMapping() { router.push("/mediaplan/mapping"); }
+
+  return (
+    <div className="mx-auto max-w-5xl p-6">
+      <header className="mb-6">
+        <h1 className="text-2xl font-bold">Загрузка медиаплана</h1>
+        <p className="text-sm text-gray-600">Принимаем .xlsx/.csv. Если заголовки распознаны — покажем предпросмотр.</p>
+      </header>
+
+      {/* Зона загрузки */}
+      <div className="mb-6 rounded-xl border-2 border-dashed p-6 text-center">
+        <input
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          onChange={(e)=>{ const f=e.target.files?.[0]; if (f) handleFile(f); }}
+          className="mx-auto block"
+        />
+        <div className="mt-2 text-xs text-gray-500">Или перетащите файл сюда</div>
+      </div>
+
+      {!upload && (
+        <div className="text-sm text-gray-500">Файл не загружен.</div>
+      )}
+
+      {upload && (
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-gray-600">
+              Файл: <b>{upload.fileName}</b> • Лист: <b>{upload.sheet}</b> • Строка заголовков: <b>{upload.headerRow}</b>
+            </div>
+            <div className="text-sm">
+              Покрытие обязательных: <b>{coverage.ok}/{coverage.total}</b>
+              {coverage.ready ? <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">готово к разметке</span>
+                              : <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">требуется разметка</span>}
+            </div>
+          </div>
+
+          {/* Предпросмотр */}
+          <div className="overflow-auto rounded-lg border">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr>
+                  {upload.headers.map(h => (
+                    <th key={h} className="bg-gray-100 p-2 text-left">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {upload.rowsRaw.slice(0, 20).map((row, i) => (
+                  <tr key={i} className="odd:bg-white even:bg-gray-50">
+                    {upload.headers.map(h => (
+                      <td key={h} className="border-t p-2">{String(row[h] ?? "")}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              className="rounded-full bg-sky-600 px-4 py-2 text-sm text-white hover:bg-sky-700"
+              onClick={goMapping}
+            >
+              Перейти к разметке
+            </button>
+            <button
+              className="rounded-full border px-4 py-2 text-sm hover:bg-gray-50"
+              onClick={() => { saveUpload(upload); saveMapping(mapping); goMapping(); }}
+            >
+              Сохранить и продолжить
+            </button>
+          </div>
+
+          {/* Показать, во что автомаппинг угадал */}
+          <details className="rounded-lg border bg-white p-4">
+            <summary className="cursor-pointer text-sm font-medium">Автосопоставление (что угадали)</summary>
+            <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
+              {TARGET_KEYS.map(k => (
+                <div key={k} className="text-sm text-gray-700">
+                  <span className="text-gray-500">{k}:</span> <b>{(mapping as any)[k] ?? "—"}</b>
+                </div>
+              ))}
+            </div>
+          </details>
+        </section>
+      )}
+    </div>
+  );
+}

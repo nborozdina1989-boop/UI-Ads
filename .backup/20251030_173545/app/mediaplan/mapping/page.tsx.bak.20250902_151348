@@ -1,0 +1,75 @@
+'use client';
+import Link from "next/link";
+import React from "react";
+
+export default function MappingStubPage() {
+  return (
+    <div className="mx-auto max-w-6xl p-8">
+      <header className="mb-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Разметка медиаплана</h1>
+          <p className="text-sm text-gray-600">Заглушка: только переходы. Разметка и предпросмотр не активны.</p>
+        </div>
+        <Link href="/mediaplan/mapping/full" className="rounded-full bg-white px-4 py-2 text-sm text-sky-700 ring-1 ring-sky-600 hover:bg-sky-50">
+          Открыть полную версию
+        </Link>
+      </header>
+
+      <section className="mb-6 rounded-xl border bg-white p-5">
+        <div className="mb-3 text-sm font-semibold">Параметры медиаплана</div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-lg border p-4">
+            <div className="mb-2 text-sm font-medium">Обязательные объекты (ячейки)</div>
+            <ul className="list-disc pl-5 text-sm text-gray-700">
+              <li>Бренд</li>
+              <li>Название РК</li>
+            </ul>
+          </div>
+          <div className="rounded-lg border p-4">
+            <div className="mb-2 text-sm font-medium">Обязательные объекты (столбцы)</div>
+            <ul className="list-disc pl-5 text-sm text-gray-700">
+              <li>Название позиции</li>
+              <li>Поставщик</li>
+              <li>Формат размещения</li>
+              <li>Хостинг видео</li>
+              <li>Среда размещения</li>
+              <li>Тип измерения</li>
+              <li>Название баннера</li>
+              <li>URL баннера</li>
+            </ul>
+          </div>
+        </div>
+
+        <details className="mt-3 rounded-lg border bg-gray-50 p-4">
+          <summary className="cursor-pointer text-sm font-medium">Дополнительные объекты</summary>
+          <div className="mt-2 grid gap-2 text-sm text-gray-700 md:grid-cols-2">
+            <span>Время начала/окончания</span>
+            <span>Тип кода</span>
+            <span>Делегирование поставщиков</span>
+            <span>Трекерный сайт (Web/iOS/Android)</span>
+            <span>Mediascope, URL аудитора, VAST версия, Редирект</span>
+            <span>Макросы: exss, ЕРИР, Bundle ID, GAID/IDFA, Внешний ID</span>
+            <span>Дин. параметры клика/показа</span>
+            <span>Гео, Целевая аудитория</span>
+          </div>
+        </details>
+      </section>
+
+      <div className="flex flex-wrap gap-2">
+        <Link href="/mediaplan/preview" className="rounded-full bg-white px-4 py-2 text-sm text-sky-700 ring-1 ring-sky-600 hover:bg-sky-50">
+          Далее → Предпросмотр
+        </Link>
+        <Link href="/autogen" className="rounded-full bg-sky-600 px-4 py-2 text-sm text-white hover:bg-sky-700">
+          Создать кампанию
+        </Link>
+        <Link href="/mediaplan/upload" className="rounded-full border px-4 py-2 text-sm hover:bg-gray-50">
+          Назад к загрузке
+        </Link>
+      </div>
+
+      <p className="mt-6 text-xs text-gray-500">
+        Примечание: это заглушка. Для рабочей логики разметки открой «полную версию».
+      </p>
+    </div>
+  );
+}

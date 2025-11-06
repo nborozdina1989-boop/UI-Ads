@@ -1,0 +1,435 @@
+'use client';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { listCampaigns, exportExcel, readCtx, saveCtx, type Campaign } from "@/lib/campaigns";
+import { getFavCampaignIds, toggleFavCampaign, isFavCampaign, getArchivedIds, archiveCampaigns } from "@/lib/archfav";
+import { createGroup } from "@/lib/campaigns";
+import { logEvent } from "@/lib/analytics";
+
+function Tabs() {
+  const path = usePathname();
+  const Tab = ({href,label}:{href:string;label:string}) => (
+    <Link href={href}
+      className={`rounded-full px-3 py-1.5 text-sm ${path===href? "bg-sky-600 text-white":"bg-white text-sky-700 ring-1 ring-sky-600 hover:bg-sky-50"}`}>{label}</Link>
+  );
+  return (
+    <div className="mb-4 flex flex-wrap gap-2">
+      <Tab href="/campaigns" label="РК"/>
+      <Tab href="/campaigns/groups" label="Группы"/>
+      <Tab href="/campaigns/archive" label="Архив"/>
+    </div>
+  );
+}
+
+type GroupMode = "none"|"brand"|"adv"|"tree";
+type SortMode = "created_desc"|"created_asc"|"name_asc"|"name_desc";
+
+const dispBrand = (b?:string) => (b && b.trim()) ? b : "Без бренда";
+const dispAdv   = (a?:string) => (a && a.trim()) ? a : "Без рекламодателя";
+
+// чекбокс с поддержкой indeterminate
+function TriStateCheckbox({
+  checked, indeterminate, onChange, ariaLabel
+}:{checked:boolean; indeterminate:boolean; onChange:()=>void; ariaLabel:string;}){
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(()=>{ if(ref.current) ref.current.indeterminate = indeterminate; }, [indeterminate]);
+  return <input ref={ref} type="checkbox" checked={checked} onChange={onChange} aria-label={ariaLabel}/>;
+}
+
+export default function CampaignsPage(){
+  const [mounted, setMounted] = useState(false);
+  useEffect(()=>{ setMounted(true); },[]);
+
+  const router = useRouter();
+  const params = useSearchParams();
+
+  const fromSuffix = useMemo(()=> {
+    const qs = params.toString();
+    return qs ? `?from=${encodeURIComponent(qs)}` : "";
+  }, [params]);
+
+  const initial = readCtx() as any;
+  const [q, setQ] = useState(params.get("q") ?? (initial.q||""));
+  const [own, setOwn] = useState((params.get("own") ?? (initial.own? "1":"0")) === "1");
+  const [delegated, setDelegated] = useState((params.get("deleg") ?? (initial.delegated? "1":"0")) === "1");
+  const [status, setStatus] = useState<"all"|"active"|"inactive">((params.get("status") as any) || (initial.status||"all"));
+  const [groupMode, setGroupMode] = useState<GroupMode>((params.get("group") as GroupMode) || (initial.groupBy || "none"));
+  const [sort, setSort] = useState<SortMode>((params.get("sort") as SortMode) || "created_desc");
+  const [favOnly, setFavOnly] = useState((params.get("fav")||"0")==="1");
+
+  const all = listCampaigns();
+  const archivedSet = useMemo(()=> new Set(getArchivedIds()),[]);
+  const favSet = useMemo(()=> new Set(getFavCampaignIds()),[]);
+
+  const filtered = useMemo(()=>{
+    const term = q.trim().toLowerCase();
+    return all
+      .filter(c => !archivedSet.has(c.id))
+      .filter(c => !term || [c.id, c.name, c.brand, c.advertiser].some(x=> String(x||"").toLowerCase().includes(term)))
+      .filter(c => status==="all" ? true : (status==="active" ? c.status==="Активна" : c.status!=="Активна"))
+      .filter(c => own ? c.type!=="Делегированная" : true)
+      .filter(c => delegated ? c.type==="Делегированная" : true)
+      .filter(c => favOnly ? favSet.has(c.id) : true);
+  }, [all, archivedSet, q, status, own, delegated, favOnly, favSet]);
+
+  const sorted = useMemo(()=>{
+    const arr = [...filtered];
+    const byName = (a:Campaign,b:Campaign)=> a.name.localeCompare(b.name, "ru");
+    const byCreated = (a:Campaign,b:Campaign)=> (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    switch (sort) {
+      case "name_asc":  return arr.sort(byName);
+      case "name_desc": return arr.sort((a,b)=>-byName(a,b));
+      case "created_asc": return arr.sort(byCreated);
+      default: return arr.sort((a,b)=> -byCreated(a,b));
+    }
+  }, [filtered, sort]);
+
+  // Карты ID для иерархий
+  const idsByBrand = useMemo(()=> {
+    const m = new Map<string, Set<number>>();
+    sorted.forEach(c=>{ const b = dispBrand(c.brand); if(!m.has(b)) m.set(b, new Set()); m.get(b)!.add(c.id); });
+    return m;
+  }, [sorted]);
+  const idsByAdv = useMemo(()=> {
+    const m = new Map<string, Set<number>>();
+    sorted.forEach(c=>{ const a = dispAdv(c.advertiser); if(!m.has(a)) m.set(a, new Set()); m.get(a)!.add(c.id); });
+    return m;
+  }, [sorted]);
+  const idsByAdvBrand = useMemo(()=> {
+    const m = new Map<string, Map<string, Set<number>>>();
+    sorted.forEach(c=>{
+      const a = dispAdv(c.advertiser);
+      const b = dispBrand(c.brand);
+      if(!m.has(a)) m.set(a, new Map());
+      const mm = m.get(a)!;
+      if(!mm.has(b)) mm.set(b, new Set());
+      mm.get(b)!.add(c.id);
+    });
+    return m;
+  }, [sorted]);
+
+  // Выбор РК (включая «массовое» управление из чекбоксов бренда/рекламодателя)
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const addIds    = (ids:Set<number>) => setSelected(prev=>{ const n=new Set(prev); ids.forEach(id=>n.add(id)); return n; });
+  const removeIds = (ids:Set<number>) => setSelected(prev=>{ const n=new Set(prev); ids.forEach(id=>n.delete(id)); return n; });
+
+  const toggleSel = (id:number)=> setSelected(prev=>{ const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); return n; });
+
+  // — Рекламодатель: всё под ним
+  const toggleAdvAll = (advLabel:string) => {
+    const ids = idsByAdv.get(advLabel) || new Set<number>();
+    const allChecked = Array.from(ids).every(id => selected.has(id));
+    allChecked ? removeIds(ids) : addIds(ids);
+  };
+
+  // — Бренд (глобально в режиме «Бренд») — все его РК
+  const toggleBrandAll = (brandLabel:string) => {
+    const ids = idsByBrand.get(brandLabel) || new Set<number>();
+    const allChecked = Array.from(ids).every(id => selected.has(id));
+    allChecked ? removeIds(ids) : addIds(ids);
+  };
+
+  // — Бренд «внутри рекламодателя» (для режима «Иерархия»)
+  const toggleBrandUnderAdv = (advLabel:string, brandLabel:string) => {
+    const ids = idsByAdvBrand.get(advLabel)?.get(brandLabel) || new Set<number>();
+    const allChecked = Array.from(ids).every(id => selected.has(id));
+    allChecked ? removeIds(ids) : addIds(ids);
+  };
+
+  const clearAllSelection = ()=> setSelected(new Set());
+
+  // Структуры для рендера
+  const tree = useMemo(()=> {
+    if (groupMode==="none") return { "Все кампании": { "__flat": sorted } } as any;
+    if (groupMode==="brand") {
+      const m:any = {};
+      sorted.forEach(c=>{
+        const k = dispBrand(c.brand);
+        (m[k] ||= { "__flat": [] }).__flat.push(c);
+      });
+      return m;
+    }
+    if (groupMode==="adv") {
+      const m:any = {};
+      sorted.forEach(c=>{
+        const k = dispAdv(c.advertiser);
+        (m[k] ||= { "__flat": [] }).__flat.push(c);
+      });
+      return m;
+    }
+    const m:any = {};
+    sorted.forEach(c=>{
+      const a = dispAdv(c.advertiser);
+      const b = dispBrand(c.brand);
+      (m[a] ||= {});
+      (m[a][b] ||= { "__flat": [] }).__flat.push(c);
+    });
+    return m;
+  }, [sorted, groupMode]);
+
+  // Панель действий
+  const ids = useMemo(()=> Array.from(selected), [selected]);
+  const gotoDashboard = ()=> { if(!ids.length) return; logEvent("open_dashboard",{ids, via:"groups"}); router.push(`/dashboard?ids=${ids.join(",")}`); };
+  const gotoBuilder  = ()=> { if(!ids.length) return; logEvent("open_builder",{ids, via:"groups"});  router.push(`/builder?ids=${ids.join(",")}`); };
+  const exportAction = ()=> exportExcel(sorted.filter(c=>selected.has(c.id)));
+  const archiveAction = ()=> { if(!ids.length) return; if(confirm(`Архивировать ${ids.length} камп.?`)){ archiveCampaigns(ids); setSelected(new Set()); router.refresh(); alert("Перемещено в «Архив»."); } };
+  const saveGroupAction = ()=> {
+    if(!ids.length) return;
+    const name = prompt("Название группы","Новая группа");
+    if(!name) return;
+    const desc = prompt("Описание группы","") || "";
+    const g = createGroup(name, ids, desc);
+    alert(`Группа «${g.name}» сохранена (${g.campaignIds.length} камп.).`);
+  };
+
+  useEffect(()=>{
+    saveCtx({ q, own, delegated, status, groupBy: groupMode });
+    const qs = new URLSearchParams();
+    if (q) qs.set("q", q);
+    if (groupMode!=="none") qs.set("group", groupMode);
+    qs.set("sort", sort);
+    qs.set("fav", favOnly ? "1":"0");
+    qs.set("own",  own ? "1":"0");
+    qs.set("deleg",delegated ? "1":"0");
+    if(status!=="all") qs.set("status", status);
+    router.replace(`/campaigns?${qs.toString()}`);
+  }, [q, groupMode, sort, favOnly, own, delegated, status, router]);
+
+  const Row = ({c}:{c:Campaign}) => (
+    <tr key={c.id} className="odd:bg-white even:bg-gray-50 hover:bg-sky-50">
+      <td className="border-t p-2">
+        <input type="checkbox" checked={selected.has(c.id)} onChange={()=>toggleSel(c.id)} aria-label="Выбрать кампанию"/>
+      </td>
+      <td className="border-t p-2">
+        <button aria-label={isFavCampaign(c.id) ? "Убрать из избранного" : "В избранное"}
+          onClick={()=>{ toggleFavCampaign(c.id); router.refresh(); }} className="text-lg leading-none">
+          {isFavCampaign(c.id) ? "⭐" : "☆"}
+        </button>
+      </td>
+      <td className="border-t p-2 font-mono text-sky-700 underline-offset-2 hover:underline">
+        <Link href={`/campaigns/${c.id}${fromSuffix}`}>{c.id}</Link>
+      </td>
+      <td className="border-t p-2 text-sky-700 underline-offset-2 hover:underline">
+        <Link href={`/campaigns/${c.id}${fromSuffix}`}>{c.name}</Link>
+        <div className="text-xs text-gray-500">Создана: {new Date(c.createdAt).toLocaleDateString("ru-RU")}</div>
+      </td>
+      <td className="border-t p-2">{c.type==="Делегированная" ? <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-700">Делегированная</span> : "Собственная"}</td>
+      <td className="border-t p-2">
+        {c.status==="Активна"
+          ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">Активна</span>
+          : <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-700">Не активна</span>}
+      </td>
+      <td className="border-t p-2 text-right" data-no-rownav>
+        <Link href={`/dashboard?ids=${c.id}`} title="Дашборд" className="mr-1 rounded-full bg-sky-600 px-2 py-1 text-xs text-white">📊</Link>
+        <Link href={`/builder?ids=${c.id}`}   title="Конструктор" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">🧩</Link>
+        <button onClick={()=>exportExcel([c])} title="Экспорт Excel" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">⬇️</button>
+        <button onClick={()=>{ if(confirm("Архивировать кампанию?")){ archiveCampaigns([c.id]); router.refresh(); }}} title="Архивировать" className="rounded-full bg-white px-2 py-1 text-xs text-amber-700 ring-1 ring-amber-600">🗄️</button>
+      </td>
+    </tr>
+  );
+
+  const TableHead = () => (
+    <thead>
+      <tr>
+        <th className="bg-gray-100 p-2 w-8"></th>
+        <th className="bg-gray-100 p-2 w-8"></th>
+        <th className="bg-gray-100 p-2 text-left">ID</th>
+        <th className="bg-gray-100 p-2 text-left">Название / Даты</th>
+        <th className="bg-gray-100 p-2 text-left">Тип</th>
+        <th className="bg-gray-100 p-2 text-left">Статус</th>
+        <th className="bg-gray-100 p-2 text-right">Действия</th>
+      </tr>
+    </thead>
+  );
+
+  return (
+    <div className="mx-auto max-w-7xl p-6">
+      <Tabs/>
+
+      {!mounted ? (
+        <div className="rounded-2xl border bg-white p-8 text-gray-500">Загрузка…</div>
+      ) : (
+        <>
+          <header className="mb-4 flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Поиск</label>
+              <input value={q} onChange={e=>{ setQ(e.target.value); logEvent("campaigns_search",{q:e.target.value}); }}
+                    placeholder="ID, название, бренд/рекламодатель" className="rounded-md border px-3 py-1.5 text-sm"/>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm">
+              Группировать
+              <select value={groupMode} onChange={e=>{ setGroupMode(e.target.value as GroupMode); clearAllSelection(); }}
+                      className="rounded-md border px-2 py-1.5 text-sm">
+                <option value="none">Нет</option>
+                <option value="brand">Бренд</option>
+                <option value="adv">Рекламодатель</option>
+                <option value="tree">Иерархия</option>
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm">
+              Показать
+              <select value={favOnly ? "fav":"all"} onChange={e=>setFavOnly(e.target.value==="fav")} className="rounded-md border px-2 py-1.5 text-sm">
+                <option value="all">Все</option>
+                <option value="fav">Избранные ⭐</option>
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={own} onChange={e=>setOwn(e.target.checked)} />
+              Собственные
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={delegated} onChange={e=>setDelegated(e.target.checked)} />
+              Делегированные
+            </label>
+
+            <label className="flex items-center gap-2 text-sm">
+              Статус
+              <select value={status} onChange={e=>setStatus(e.target.value as any)} className="rounded-md border px-2 py-1.5 text-sm">
+                <option value="all">Все</option>
+                <option value="active">Активные</option>
+                <option value="inactive">Неактивные</option>
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm">
+              Сортировка
+              <select value={sort} onChange={e=>setSort(e.target.value as SortMode)} className="rounded-md border px-2 py-1.5 text-sm">
+                <option value="created_desc">Сначала новые</option>
+                <option value="created_asc">Сначала старые</option>
+                <option value="name_asc">Название A→Z</option>
+                <option value="name_desc">Название Z→A</option>
+              </select>
+            </label>
+
+            <div className="ml-auto flex gap-2">
+              <Link href="/mediaplan/upload" className="rounded-full bg-sky-600 px-3 py-1.5 text-sm text-white hover:bg-sky-700">Загрузить медиаплан</Link>
+            </div>
+          </header>
+
+          {ids.length>0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 ring-1 ring-sky-200">
+              <div className="text-sm text-sky-900">Выбрано РК: <b>{ids.length}</b></div>
+              <button onClick={gotoDashboard} className="rounded-full bg-sky-600 px-3 py-1 text-xs text-white" title="Дашборд">📊</button>
+              <button onClick={gotoBuilder}  className="rounded-full bg-white px-3 py-1 text-xs text-sky-700 ring-1 ring-sky-600" title="Конструктор">🧩</button>
+              <button onClick={exportAction} className="rounded-full bg-white px-3 py-1 text-xs text-sky-700 ring-1 ring-sky-600" title="Экспорт Excel">⬇️</button>
+              <button onClick={archiveAction} className="rounded-full bg-white px-3 py-1 text-xs text-amber-700 ring-1 ring-amber-600" title="Архивировать">🗄️</button>
+              <button onClick={saveGroupAction} className="rounded-full bg-white px-3 py-1 text-xs text-emerald-700 ring-1 ring-emerald-600" title="Сохранить в группу">🗂️ Сохранить</button>
+              <button onClick={clearAllSelection} className="ml-auto rounded-full bg-white px-3 py-1 text-xs text-gray-700 ring-1 ring-gray-300" title="Сбросить">✖️</button>
+            </div>
+          )}
+
+          <div className="space-y-6">
+            { (["none","brand","adv"] as GroupMode[]).includes(groupMode) ? (
+              Object.entries(tree).map(([label, bucket]:any)=>(
+                <section key={label} className="rounded-2xl border bg-white p-4 shadow-sm">
+                  {Object.keys(tree).length>1 && (
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {groupMode==="brand" && (
+                          (()=> {
+                            const ids = idsByBrand.get(label) || new Set<number>();
+                            const all = Array.from(ids).every(id => selected.has(id));
+                            const some = !all && Array.from(ids).some(id => selected.has(id));
+                            return (
+                              <TriStateCheckbox
+                                checked={all} indeterminate={some}
+                                onChange={()=>toggleBrandAll(label)}
+                                ariaLabel={`Выбрать бренд ${label}`}
+                              />
+                            );
+                          })()
+                        )}
+                        {groupMode==="adv" && (
+                          (()=> {
+                            const ids = idsByAdv.get(label) || new Set<number>();
+                            const all = Array.from(ids).every(id => selected.has(id));
+                            const some = !all && Array.from(ids).some(id => selected.has(id));
+                            return (
+                              <TriStateCheckbox
+                                checked={all} indeterminate={some}
+                                onChange={()=>toggleAdvAll(label)}
+                                ariaLabel={`Выбрать рекламодателя ${label}`}
+                              />
+                            );
+                          })()
+                        )}
+                        <div className="text-left text-xl font-semibold">{label}
+                          <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{bucket.__flat.length}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="overflow-auto">
+                    <table className="w-full border-collapse text-sm">
+                      <TableHead/>
+                      <tbody>
+                        {bucket.__flat.map((c:Campaign)=> <Row key={c.id} c={c} />)}
+                        {bucket.__flat.length===0 && (<tr><td colSpan={7} className="py-8 text-center text-gray-500">Ничего не найдено</td></tr>)}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ))
+            ) : (
+              Object.entries(tree).map(([advLabel, brands]:any)=>(
+                <section key={advLabel} className="rounded-2xl border bg-white p-4 shadow-sm">
+                  <div className="mb-2 flex items-center gap-3">
+                    {(()=> {
+                      const ids = idsByAdv.get(advLabel) || new Set<number>();
+                      const all = Array.from(ids).every(id => selected.has(id));
+                      const some = !all && Array.from(ids).some(id => selected.has(id));
+                      return (
+                        <TriStateCheckbox
+                          checked={all} indeterminate={some}
+                          onChange={()=>toggleAdvAll(advLabel)}
+                          ariaLabel={`Выбрать рекламодателя ${advLabel}`}
+                        />
+                      );
+                    })()}
+                    <div className="text-left text-xl font-semibold">{advLabel}</div>
+                  </div>
+
+                  {Object.entries(brands).map(([brandLabel, bucket]:any)=>(
+                    <div key={`${advLabel}::${brandLabel}`} className="mb-4 rounded-xl border bg-white">
+                      <div className="flex items-center justify-between px-3 py-2">
+                        <div className="flex items-center gap-3">
+                          {(()=> {
+                            const ids = idsByAdvBrand.get(advLabel)?.get(brandLabel) || new Set<number>();
+                            const all = Array.from(ids).every(id => selected.has(id));
+                            const some = !all && Array.from(ids).some(id => selected.has(id));
+                            return (
+                              <TriStateCheckbox
+                                checked={all} indeterminate={some}
+                                onChange={()=>toggleBrandUnderAdv(advLabel, brandLabel)}
+                                ariaLabel={`Выбрать бренд ${brandLabel}`}
+                              />
+                            );
+                          })()}
+                          <div className="text-left font-semibold">{brandLabel}
+                            <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{bucket.__flat.length}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="overflow-auto">
+                        <table className="w-full border-collapse text-sm">
+                          <TableHead/>
+                          <tbody>
+                            {bucket.__flat.map((c:Campaign)=> <Row key={c.id} c={c} />)}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                </section>
+              ))
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

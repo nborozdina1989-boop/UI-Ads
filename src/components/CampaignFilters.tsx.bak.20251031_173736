@@ -1,0 +1,224 @@
+"use client";
+import React, { useState } from "react";
+import Link from "next/link";
+
+type GroupMode = "none" | "brand" | "adv" | "tree";
+type SortMode = "created_desc" | "created_asc" | "name_asc" | "name_desc";
+
+interface CampaignFiltersProps {
+  q: string;
+  onQChange: (v: string) => void;
+
+  status: "all" | "active" | "inactive";
+  onStatusChange: (v: "all" | "active" | "inactive") => void;
+
+  groupMode: GroupMode;
+  onGroupChange: (v: GroupMode) => void;
+
+  sort: SortMode;
+  onSortChange: (v: SortMode) => void;
+
+  own: boolean;
+  onOwnChange: (v: boolean) => void;
+
+  delegated: boolean;
+  onDelegatedChange: (v: boolean) => void;
+
+  favOnly: boolean;
+  onFavOnlyChange: (v: boolean) => void;
+
+  // новые 4 поля
+  idFilter: string;
+  onIdFilterChange: (v: string) => void;
+
+  advFilter: string;
+  onAdvFilterChange: (v: string) => void;
+
+  brandFilter: string;
+  onBrandFilterChange: (v: string) => void;
+
+  tagFilter: string;
+  onTagFilterChange: (v: string) => void;
+}
+
+export default function CampaignFilters({
+  q,
+  onQChange,
+  status,
+  onStatusChange,
+  groupMode,
+  onGroupChange,
+  sort,
+  onSortChange,
+  own,
+  onOwnChange,
+  delegated,
+  onDelegatedChange,
+  favOnly,
+  onFavOnlyChange,
+  idFilter,
+  onIdFilterChange,
+  advFilter,
+  onAdvFilterChange,
+  brandFilter,
+  onBrandFilterChange,
+  tagFilter,
+  onTagFilterChange,
+}: CampaignFiltersProps) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const btnBase =
+    "rounded-full px-3 py-1.5 text-sm transition";
+  const btnOn = "bg-sky-600 text-white";
+  const btnOff = "bg-white text-sky-700 ring-1 ring-sky-600 hover:bg-sky-50";
+
+  return (
+    <div className="mb-4 flex flex-wrap gap-3 rounded-2xl border bg-white p-4 shadow-sm">
+      {/* левая часть: поиск + доп. фильтры */}
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-sm text-gray-600">Поиск</label>
+        <input
+          value={q}
+          onChange={(e) => onQChange(e.target.value)}
+          placeholder="ID, название, бренд/рекламодатель"
+          className="rounded-md border px-3 py-1.5 text-sm"
+        />
+
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((p) => !p)}
+          className="rounded-full bg-white px-3 py-1.5 text-sm text-sky-700 ring-1 ring-sky-600 hover:bg-sky-50"
+        >
+          {showAdvanced ? "Скрыть доп. фильтры" : "Доп. фильтры"}
+        </button>
+      </div>
+
+      {/* середина: статус, свои/делег, избранные */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-gray-500">Статус:</span>
+        <button
+          type="button"
+          onClick={() =>
+            onStatusChange(status === "active" ? "all" : "active")
+          }
+          className={`${btnBase} ${status === "active" ? btnOn : btnOff}`}
+        >
+          Активные
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onStatusChange(status === "inactive" ? "all" : "inactive")
+          }
+          className={`${btnBase} ${status === "inactive" ? btnOn : btnOff}`}
+        >
+          Неактивные
+        </button>
+
+        <span className="ml-2 text-sm text-gray-500">Тип:</span>
+        <button
+          type="button"
+          onClick={() => onOwnChange(!own)}
+          className={`${btnBase} ${own ? btnOn : btnOff}`}
+        >
+          Собственные
+        </button>
+        <button
+          type="button"
+          onClick={() => onDelegatedChange(!delegated)}
+          className={`${btnBase} ${delegated ? btnOn : btnOff}`}
+        >
+          Делегированные
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onFavOnlyChange(!favOnly)}
+          className={`${btnBase} ${favOnly ? btnOn : btnOff}`}
+        >
+          ⭐ Избранные
+        </button>
+      </div>
+
+      {/* правая часть: группировка и сортировка */}
+      <div className="ml-auto flex flex-wrap gap-2">
+        <label className="flex items-center gap-2 text-sm">
+          Группировать
+          <select
+            value={groupMode}
+            onChange={(e) => onGroupChange(e.target.value as GroupMode)}
+            className="rounded-md border px-2 py-1.5 text-sm"
+          >
+            <option value="none">Нет</option>
+            <option value="brand">Бренд</option>
+            <option value="adv">Рекламодатель</option>
+            <option value="tree">Иерархия</option>
+          </select>
+        </label>
+
+        <label className="flex items-center gap-2 text-sm">
+          Сортировка
+          <select
+            value={sort}
+            onChange={(e) => onSortChange(e.target.value as SortMode)}
+            className="rounded-md border px-2 py-1.5 text-sm"
+          >
+            <option value="created_desc">Сначала новые</option>
+            <option value="created_asc">Сначала старые</option>
+            <option value="name_asc">Название A→Z</option>
+            <option value="name_desc">Название Z→A</option>
+          </select>
+        </label>
+
+        <Link
+          href="/mediaplan/upload"
+          className="rounded-full bg-sky-600 px-3 py-1.5 text-sm text-white hover:bg-sky-700"
+        >
+          Загрузить медиаплан
+        </Link>
+      </div>
+
+      {/* доп. фильтры */}
+      {showAdvanced && (
+        <div className="mt-2 flex w-full flex-wrap gap-3 rounded-xl bg-sky-50 p-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">ID кампании</label>
+            <input
+              value={idFilter}
+              onChange={(e) => onIdFilterChange(e.target.value)}
+              className="rounded-md border px-2 py-1 text-sm"
+              placeholder="123456"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">Рекламодатель</label>
+            <input
+              value={advFilter}
+              onChange={(e) => onAdvFilterChange(e.target.value)}
+              className="rounded-md border px-2 py-1 text-sm"
+              placeholder="ООО Рекламодатель"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">Бренд</label>
+            <input
+              value={brandFilter}
+              onChange={(e) => onBrandFilterChange(e.target.value)}
+              className="rounded-md border px-2 py-1 text-sm"
+              placeholder="Мой бренд"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">Тег</label>
+            <input
+              value={tagFilter}
+              onChange={(e) => onTagFilterChange(e.target.value)}
+              className="rounded-md border px-2 py-1 text-sm"
+              placeholder="promo / launch / 2025"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,167 +1,291 @@
-// Client-side campaigns store (demo seed with A/B/C/Без рекламодателя → бренды → РК)
+const LS_KEY = "adriver_campaigns_v4";
+const GROUPS_KEY = "adriver_campaign_groups_v1";
+const CTX_KEY = "adriver_campaigns_ctx_v1";
+
 export type Campaign = {
-  id: number;
+  id: string;
   name: string;
-  brand?: string;
-  advertiser?: string;
-  status: "Активна" | "Не активна";
-  type: "Собственная" | "Делегированная";
-  createdAt: string; // ISO YYYY-MM-DD
+  advertiser: string;
+  brand: string;
+  type: string;
+  status: "Активна" | "Не активна" | "archived";
+  createdAt: string;
+  favorite: boolean;
+  delegated: boolean;
+  own: boolean;
 };
 
-const LS_CAMPS = "adr_campaigns_v4";          // версия ключа — свежий сид
-const LS_CTX   = "adr_campaigns_ctx_v1";
-
-const hasWin = () => typeof window !== "undefined";
-const read = <T,>(k:string, fallback:T):T => {
-  if(!hasWin()) return fallback as T;
-  try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) as T : fallback; } catch { return fallback; }
+export type Group = {
+  id: string;
+  name: string;
+  createdAt: string;
+  campaignIds: string[];
+  description?: string;
+  favorite?: boolean;
 };
-const write = (k:string, v:any) => { if(hasWin()) localStorage.setItem(k, JSON.stringify(v)); };
 
-// --------- DEMO SEED -----------
-function pad2(n:number){ return n<10 ? `0${n}` : String(n); }
-function dateByIndex(i:number){
-  const m = (i % 12) + 1;
-  const d = (i % 28) + 1;
-  return `2025-${pad2(m)}-${pad2(d)}`;
-}
-function generateDemo(): Campaign[] {
-  const advertisers = [
-    { label: "Рекламодатель A", brands: ["Бренд 1", "Бренд 2"] },
-    { label: "Рекламодатель B", brands: ["Бренд 3", "Бренд 4"] },
-    { label: "Рекламодатель C", brands: ["Бренд 5", "Бренд 6"] },
-    { label: "Без рекламодателя", brands: ["Без бренда"] },
-  ];
-  let nextId = 900001;
-  let idx = 0;
-  const out: Campaign[] = [];
-  for (const adv of advertisers){
-    for (const brand of adv.brands){
-      for (let k=1; k<=5; k++){
-        out.push({
-          id: nextId++,
-          name: `Рекламная кампания ${k}`,
-          brand: brand,
-          advertiser: adv.label,
-          status: (k % 2 === 0) ? "Не активна" : "Активна",
-          type: "Собственная",
-          createdAt: dateByIndex(idx++),
-        });
+type AdvertiserSpec = {
+  name: string;
+  brands: string[];
+};
+
+const ADVERTISERS: AdvertiserSpec[] = [
+  { name: "Рекламодатель А", brands: ["Бренд 1", "Бренд 2", "Бренд 3"] },
+  { name: "Рекламодатель B", brands: ["Бренд 4", "Бренд 5", "Бренд 6"] },
+];
+
+const NO_ADVERTISER_NAME = "Без рекламодателя";
+const NO_BRAND_NAME = "Без бренда";
+const NO_ADVERTISER_COUNT = 100;
+
+function makeBaseCampaigns(): Campaign[] {
+  const result: Campaign[] = [];
+  let counter = 1;
+  const baseId = 900000;
+
+  for (const adv of ADVERTISERS) {
+    for (const brand of adv.brands) {
+      for (let i = 1; i <= 100; i++) {
+        const idNum = baseId + counter;
+        const id = String(idNum);
+        result.push(makeCampaign(id, i, adv.name, brand, counter));
+        counter++;
       }
     }
   }
-  // 4 делегированные кампании (по одной в каждом кластере)
-  const delegate = new Set<number>([900002, 900012, 900022, 900032]);
-  out.forEach(c => { if (delegate.has(c.id)) c.type = "Делегированная"; });
-  return out;
-}
-// -------------------------------
 
-function ensureSeed(): Campaign[] {
-  let data = read<Campaign[]|null>(LS_CAMPS, null);
-  if(!data || !Array.isArray(data) || data.length === 0){
-    data = generateDemo();
-    write(LS_CAMPS, data);
+  for (let i = 1; i <= NO_ADVERTISER_COUNT; i++) {
+    const idNum = baseId + counter;
+    const id = String(idNum);
+    result.push(makeCampaign(id, i, NO_ADVERTISER_NAME, NO_BRAND_NAME, counter));
+    counter++;
   }
-  return data;
+
+  return result;
 }
 
-export const listCampaigns = (): Campaign[] => {
-  const arr = ensureSeed();
-  return [...arr].sort((a,b)=> a.id - b.id);
-};
+// 80% "Активна"
+function statusFromSeed(seed: number): "Активна" | "Не активна" {
+  return seed % 5 === 0 ? "Не активна" : "Активна";
+}
 
-// Возможное сохранение массива кампаний (на будущее)
-const saveCampaigns = (arr: Campaign[]) => write(LS_CAMPS, arr);
+function makeCampaign(
+  id: string,
+  indexInBrand: number,
+  advertiser: string,
+  brand: string,
+  seed: number
+): Campaign {
+  const createdAt = makeCreatedDate(seed);
+  const type = seed % 9 === 0 ? "Делегированная" : "Собственная";
+  const status = statusFromSeed(seed);
+  const favorite = seed % 7 === 0;
+  const delegated = type === "Делегированная" ? true : seed % 11 === 0;
 
-// Контекст экрана (поиск/фильтры)
-export const readCtx = () => read<any>(LS_CTX, {});
-export const saveCtx = (ctx:any) => write(LS_CTX, ctx);
+  return {
+    id,
+    name: `Рекламная кампания ${indexInBrand}`,
+    advertiser,
+    brand,
+    type,
+    status,
+    createdAt,
+    favorite,
+    delegated,
+    own: !delegated,
+  };
+}
 
-// Экспорт в "Excel" — HTML-таблица, которую Excel открывает нативно
-export const exportExcel = (rows: Campaign[]) => {
-  if(!hasWin()) return;
-  const headers = ["ID","Название","Бренд","Рекламодатель","Статус","Тип","Создана"];
-  const html = `
-    <html><head><meta charset="utf-8"></head><body>
-    <table border="1">
-      <thead><tr>${headers.map(h=>`<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
-      <tbody>
-        ${rows.map(r=>`<tr>
-          <td>${escapeHtml(String(r.id))}</td>
-          <td>${escapeHtml(r.name)}</td>
-          <td>${escapeHtml(r.brand||"")}</td>
-          <td>${escapeHtml(r.advertiser||"")}</td>
-          <td>${escapeHtml(r.status)}</td>
-          <td>${escapeHtml(r.type)}</td>
-          <td>${escapeHtml(r.createdAt)}</td>
-        </tr>`).join("")}
-      </tbody>
-    </table>
-    </body></html>
-  `.trim();
-  const blob = new Blob([html], { type: "application/vnd.ms-excel" });
+function makeCreatedDate(shift: number): string {
+  const base = new Date("2025-01-15T10:00:00Z");
+  base.setDate(base.getDate() - shift);
+  const yyyy = base.getFullYear();
+  const mm = String(base.getMonth() + 1).padStart(2, "0");
+  const dd = String(base.getDate()).padStart(2, "0");
+  return `${dd}.${mm}.${yyyy}`;
+}
+
+function loadFromLS(): Campaign[] {
+  if (typeof window === "undefined") return [];
+  const raw = window.localStorage.getItem(LS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed as Campaign[];
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+function saveToLS(list: Campaign[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(LS_KEY, JSON.stringify(list));
+}
+
+// ===== КАМПАНИИ =====
+
+export function listCampaigns(): Campaign[] {
+  const fromLS = loadFromLS();
+  if (fromLS.length > 0) return fromLS;
+  const base = makeBaseCampaigns();
+  saveToLS(base);
+  return base;
+}
+
+export function saveCampaign(c: Campaign) {
+  const list = listCampaigns();
+  const idx = list.findIndex((x) => x.id === c.id);
+  if (idx >= 0) list[idx] = c;
+  else list.push(c);
+  saveToLS(list);
+}
+
+export function toggleFavorite(id: string) {
+  const list = listCampaigns();
+  const idx = list.findIndex((x) => x.id === id);
+  if (idx === -1) return;
+  list[idx].favorite = !list[idx].favorite;
+  saveToLS(list);
+}
+
+export function archiveCampaign(id: string) {
+  const list = listCampaigns();
+  const idx = list.findIndex((x) => x.id === id);
+  if (idx === -1) return;
+  list[idx].status = "archived";
+  saveToLS(list);
+}
+
+export function deleteCampaign(id: string) {
+  const list = listCampaigns().filter((x) => x.id !== id);
+  saveToLS(list);
+}
+
+export function clearAllCampaignsForDebug() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(LS_KEY);
+}
+
+// ===== ГРУППЫ =====
+
+function loadGroups(): Group[] {
+  if (typeof window === "undefined") return [];
+  const raw = window.localStorage.getItem(GROUPS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed as Group[];
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+function saveGroups(list: Group[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(GROUPS_KEY, JSON.stringify(list));
+}
+
+export function listGroups(): Group[] {
+  return loadGroups();
+}
+
+export function createGroup(name: string, campaignIds: string[] = [], description = ""): Group {
+  const groups = loadGroups();
+  const id = "grp_" + String(groups.length + 1).padStart(3, "0");
+  const g: Group = {
+    id,
+    name,
+    createdAt: new Date().toISOString(),
+    campaignIds,
+    description,
+    favorite: false,
+  };
+  groups.push(g);
+  saveGroups(groups);
+  return g;
+}
+
+export function toggleFavGroup(id: string) {
+  const groups = loadGroups();
+  const idx = groups.findIndex((g) => g.id === id);
+  if (idx === -1) return;
+  const g = groups[idx];
+  g.favorite = !g.favorite;
+  groups[idx] = g;
+  saveGroups(groups);
+}
+
+export function deleteGroup(id: string) {
+  const groups = loadGroups().filter((g) => g.id !== id);
+  saveGroups(groups);
+}
+
+// ===== КОНТЕКСТ =====
+
+export function readCtx(): any {
+  if (typeof window === "undefined") return {};
+  const raw = window.localStorage.getItem(CTX_KEY);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed;
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveCtx(ctx: any) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(CTX_KEY, JSON.stringify(ctx || {}));
+}
+
+// ===== ЭКСПОРТ =====
+
+export function exportExcel(campaigns: Campaign[]) {
+  if (typeof window === "undefined") return;
+  const header = "ID;Название;Рекламодатель;Бренд;Тип;Статус;Создана\n";
+  const rows = campaigns
+    .map((c) => {
+      return `${c.id};${c.name};${c.advertiser};${c.brand};${c.type};${c.status};${c.createdAt}`;
+    })
+    .join("\n");
+  const csv = header + rows;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = rows.length ? `campaigns_${rows.length}.xlsx` : "campaigns.xlsx";
-  document.body.appendChild(a);
+  a.download = "adriver_campaigns.csv";
   a.click();
-  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 500);
-};
-
-function escapeHtml(s:string){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c] as string)); }
-
-// ======== Группы (Groups) ========
-export type Group = {
-  id: string;        // внутренний id
-  hrid: string;      // человекочитаемый HR-ID, например GRP-0001
-  name: string;
-  campaignIds: number[];
-  createdAt: string; // YYYY-MM-DD
-  fav?: boolean;
-};
-
-const LS_GROUPS = "adr_groups_v1";
-
-function todayISO(){ const d=new Date(); const m=String(d.getMonth()+1).padStart(2,"0"); const dd=String(d.getDate()).padStart(2,"0"); return `${d.getFullYear()}-${m}-${dd}`; }
-function ensureGroupsStore(): Group[] {
-  let arr = read<Group[]|null>(LS_GROUPS, null);
-  if(!arr || !Array.isArray(arr)){
-    // лёгкий сид для демо: 2 группы
-    const all = listCampaigns();
-    const act = all.filter(c=>c.status==="Активна").slice(0,8).map(c=>c.id);
-    const inact = all.filter(c=>c.status==="Не активна").slice(0,8).map(c=>c.id);
-    arr = [
-      { id:"grp-1", hrid:"GRP-0001", name:"Активные (пример)", campaignIds: act, createdAt: todayISO(), fav:true },
-      { id:"grp-2", hrid:"GRP-0002", name:"Неактивные (пример)", campaignIds: inact, createdAt: todayISO(), fav:false },
-    ];
-    write(LS_GROUPS, arr);
-  }
-  return arr;
+  URL.revokeObjectURL(url);
 }
-const saveGroups = (arr:Group[]) => write(LS_GROUPS, arr);
 
-export const listGroups = ():Group[] => ensureGroupsStore();
-export const toggleFavGroup = (id:string):Group[] => {
-  const next = ensureGroupsStore().map(g => g.id===id ? {...g, fav:!g.fav} : g);
-  saveGroups(next); return next;
+export type CampaignStats = {
+  today: { imps: number; clicks: number; };
+  yesterday: { imps: number; clicks: number; };
+  total: { imps: number; clicks: number; };
 };
-export const deleteGroup = (id:string):Group[] => {
-  const next = ensureGroupsStore().filter(g => g.id!==id);
-  saveGroups(next); return next;
-};
-export const createGroup = (name:string, campaignIds:number[]):Group => {
-  const all = ensureGroupsStore();
-  const seq = (n:number)=>`GRP-${String(n).padStart(4,"0")}`;
-  const idx = all.length? (Math.max(...all.map(g=>parseInt((g.hrid||"").split("-")[1]||"0"))) + 1) : 1;
-  const g:Group = { id:`grp-${Math.random().toString(36).slice(2,8)}`, hrid:seq(idx), name, campaignIds:[...new Set(campaignIds)], createdAt:todayISO(), fav:false };
-  const next = [g, ...all]; saveGroups(next); return g;
-};
-// ==================================
 
-// proto-build compat stubs
-export function listDeleted(){ return []; }
-export function purgeOldDeleted(){ return 0; }
-export function restoreCampaigns(_ids:string[] = []){ return { restored: _ids.length }; }
+export function getCampaignStats(id: number): CampaignStats {
+  // детерминированный псевдорандом от id
+  const rnd = (seed: number) => {
+    let x = Math.imul(seed ^ 0x9e3779b1, 0x85ebca6b) >>> 0;
+    x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35) >>> 0; x ^= x >>> 16;
+    return x / 0xFFFFFFFF;
+  };
+  const baseImps = Math.floor(20000 + rnd(id) * 4_000_000);        // 20k .. 4.02M
+  const baseClk  = Math.max(0, Math.floor(baseImps * (0.003 + rnd(id+1)*0.02))); // ~0.3%..2.3%
+
+  const todayImps = Math.floor(baseImps * (0.02 + rnd(id+2)*0.08));      // ~2%..10%
+  const yestImps  = Math.floor(baseImps * (0.02 + rnd(id+3)*0.08));
+  const todayClk  = Math.max(0, Math.floor(todayImps * (0.003 + rnd(id+4)*0.02)));
+  const yestClk   = Math.max(0, Math.floor(yestImps  * (0.003 + rnd(id+5)*0.02)));
+
+  return {
+    today: { imps: todayImps, clicks: todayClk },
+    yesterday: { imps: yestImps, clicks: yestClk },
+    total: { imps: baseImps, clicks: baseClk },
+  };
+}

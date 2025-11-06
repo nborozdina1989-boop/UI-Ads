@@ -1,0 +1,229 @@
+'use client';
+import React, { useMemo, useState } from "react";
+
+/**
+ * AdRiver — Конструктор отчётов (прототип без бэка)
+ * - Палитра: Атрибуты / Метрики
+ * - DnD-зоны: Фильтры / Строки / Метрики
+ * - Предпросмотр таблицы (упрощённая группировка по выбранным "Строкам")
+ * Лёгкий, самодостаточный компонент без внешних зависимостей.
+ */
+
+/* ---------- Моки ---------- */
+const ATTRIBUTES: string[] = [
+  "Дата", "Страна", "Город", "Устройство", "Кампания",
+  "Размещение", "Площадка/Домен", "Формат",
+];
+
+const METRICS: string[] = [
+  "Показы", "Клики", "CTR", "Бюджет ₽", "CPM",
+];
+
+type Row = {
+  id: number;
+  кампания: string; размещение: string; домен: string;
+  страна: string; город: string; устройство: "web"|"mobile"|"tablet";
+  показы: number; клики: number; бюджет: number;
+};
+
+const MOCK_ROWS: Row[] = [
+  { id: 1, кампания: "A", размещение: "A-1", домен: "site.ru", страна: "RU", город: "Москва", устройство: "web",    показы: 120000, клики: 1800, бюджет: 24000 },
+  { id: 2, кампания: "A", размещение: "A-2", домен: "site.ru", страна: "RU", город: "СПб",    устройство: "mobile", показы:  80000, клики: 1200, бюджет: 16000 },
+  { id: 3, кампания: "B", размещение: "B-1", домен: "news.ru", страна: "RU", город: "Москва", устройство: "web",    показы: 150000, клики: 2100, бюджет: 30000 },
+  { id: 4, кампания: "C", размещение: "C-1", домен: "blog.com",страна: "KZ", город: "Алматы", устройство: "web",    показы:  60000, клики:  600, бюджет:  7000 },
+];
+
+/* ---------- Утилиты ---------- */
+const list = (arr?: string[]) => (Array.isArray(arr) && arr.length ? arr.join(", ") : "—");
+const fmt = (n: number) => new Intl.NumberFormat("ru-RU").format(n);
+const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
+const ctr = (clicks: number, imps: number) => (imps ? clicks / imps : 0);
+const cpm = (spend: number, imps: number) => (imps ? (spend / imps) * 1000 : 0);
+
+/* ---------- DnD ядро ---------- */
+type Kind = "attribute" | "metric";
+type DragPayload = { kind: Kind; value: string };
+
+function setDragData(e: React.DragEvent, payload: DragPayload) {
+  e.dataTransfer.setData("application/json", JSON.stringify(payload));
+  e.dataTransfer.setData("text/plain", JSON.stringify(payload));
+}
+function getDragData(e: React.DragEvent): DragPayload | null {
+  const raw = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain");
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+/* ---------- Малые UI-компоненты ---------- */
+function Chip({ label, onRemove }: { label: string; onRemove?: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-2xl border bg-white px-3 py-1 text-sm shadow-sm">
+      <span>{label}</span>
+      {onRemove && (
+        <button onClick={onRemove} className="rounded-full px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-100" aria-label="Удалить">
+          ✕
+        </button>
+      )}
+    </span>
+  );
+}
+
+function PaletteSection({ title, items, kind }: { title: string; items: string[]; kind: Kind }) {
+  return (
+    <section>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</h3>
+      <div className="grid grid-cols-2 gap-2">
+        {items.map((it) => (
+          <button
+            key={`${kind}:${it}`}
+            className="w-full rounded-lg border bg-white px-3 py-2 text-left text-sm hover:bg-gray-50 active:bg-gray-100"
+            draggable
+            onDragStart={(e) => setDragData(e, { kind, value: it })}
+            title="Перетащите в область ниже"
+          >
+            {it}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DropZone({
+  title, accept, items, onDropItem, onRemove,
+}: {
+  title: string;
+  accept: Kind;
+  items: string[];
+  onDropItem: (label: string) => void;
+  onRemove: (label: string) => void;
+}) {
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const data = getDragData(e);
+    if (data && data.kind === accept) onDropItem(data.value);
+  };
+  return (
+    <div onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}
+         className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-3 transition-colors hover:border-sky-400">
+      <div className="mb-2 flex items-center justify-between">
+        <h4 className="font-medium text-gray-700">{title}</h4>
+        <span className="text-xs text-gray-400">Перетащите сюда {accept === "metric" ? "метрики" : "поля"}</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {items.length === 0 ? <span className="text-sm text-gray-400">Пусто</span> :
+          items.map((it) => <Chip key={it} label={it} onRemove={() => onRemove(it)} />)}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Главная страница конструктора ---------- */
+export default function BuilderPage() {
+  const [filters, setFilters] = useState<string[]>(["Дата", "Страна"]);
+  const [rows, setRows] = useState<string[]>(["Кампания", "Размещение"]);
+  const [metrics, setMetrics] = useState<string[]>(["Показы", "Клики", "Бюджет ₽"]);
+
+  const addUnique = (arr: string[], v: string) => (arr.includes(v) ? arr : [...arr, v]);
+  const remove = (arr: string[], v: string) => arr.filter((x) => x !== v);
+
+  // Предпросмотр таблицы — упрощённая агрегирующая логика
+  const preview = useMemo(() => {
+    const cols = [...rows, ...metrics];
+
+    const mapKey = (r: Row) => rows.map((k) => {
+      switch (k) {
+        case "Кампания": return r.кампания;
+        case "Размещение": return r.размещение;
+        case "Площадка/Домен": return r.домен;
+        case "Страна": return r.страна;
+        case "Город": return r.город;
+        case "Устройство": return r.устройство;
+        default: return "—";
+      }
+    }).join(" | ");
+
+    const grouped = new Map<string, { показы: number; клики: number; бюджет: number }>();
+    for (const r of MOCK_ROWS) {
+      const key = mapKey(r);
+      const g = grouped.get(key) || { показы: 0, клики: 0, бюджет: 0 };
+      g.показы += r.показы; g.клики += r.клики; g.бюджет += r.бюджет;
+      grouped.set(key, g);
+    }
+
+    const data = Array.from(grouped.entries()).map(([key, g]) => {
+      const base: Record<string, any> = {};
+      const parts = key.split(" | ");
+      rows.forEach((name, i) => (base[name] = parts[i] ?? "—"));
+      for (const m of metrics) {
+        switch (m) {
+          case "Показы": base[m] = g.показы; break;
+          case "Клики": base[m] = g.клики; break;
+          case "Бюджет ₽": base[m] = g.бюджет; break;
+          case "CTR": base[m] = pct(ctr(g.клики, g.показы)); break;
+          case "CPM": base[m] = Math.round(cpm(g.бюджет, g.показы)); break;
+          default: base[m] = "—";
+        }
+      }
+      return base;
+    });
+
+    return { columns: cols, data };
+  }, [rows, metrics]);
+
+  return (
+    <div className="mx-auto max-w-6xl p-6">
+      <header className="mb-6">
+        <h1 className="text-2xl font-bold">Конструктор отчётов</h1>
+        <p className="text-sm text-gray-500">Перетаскивайте поля и метрики. Предпросмотр ниже обновляется автоматически.</p>
+      </header>
+
+      <div className="grid grid-cols-12 gap-6">
+        {/* Палитра */}
+        <aside className="col-span-4 space-y-6">
+          <PaletteSection title="Атрибуты" items={ATTRIBUTES} kind="attribute" />
+          <PaletteSection title="Метрики" items={METRICS} kind="metric" />
+        </aside>
+
+        {/* Зоны и предпросмотр */}
+        <main className="col-span-8 space-y-6">
+          <DropZone title="Фильтры" accept="attribute" items={filters}
+                    onDropItem={(v) => setFilters((a) => addUnique(a, v))}
+                    onRemove={(v) => setFilters((a) => remove(a, v))} />
+          <DropZone title="Строки" accept="attribute" items={rows}
+                    onDropItem={(v) => setRows((a) => addUnique(a, v))}
+                    onRemove={(v) => setRows((a) => remove(a, v))} />
+          <DropZone title="Метрики" accept="metric" items={metrics}
+                    onDropItem={(v) => setMetrics((a) => addUnique(a, v))}
+                    onRemove={(v) => setMetrics((a) => remove(a, v))} />
+
+          <section className="rounded-xl border bg-white p-4 shadow-sm">
+            <h3 className="mb-2 font-semibold">Предпросмотр таблицы</h3>
+            <div className="mb-3 text-sm text-gray-600">
+              Фильтры: {list(filters)} • Строки: {list(rows)} • Метрики: {list(metrics)}
+            </div>
+            <div className="overflow-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr>
+                    {preview.columns.map((c) => (
+                      <th key={c} className="sticky top-0 bg-gray-100 p-2 text-left font-medium text-gray-700">{c}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.data.map((r, idx) => (
+                    <tr key={idx} className="odd:bg-white even:bg-gray-50">
+                      {preview.columns.map((c) => (
+                        <td key={c} className="border-t p-2">{typeof r[c] === "number" ? fmt(r[c]) : r[c]}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  );
+}

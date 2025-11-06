@@ -1,0 +1,15 @@
+'use client';
+import { Suspense } from 'react';
+import CampaignsPage from '../_pages/CampaignsPage';
+
+/**
+ * Технический враппер: только чтобы удовлетворить требование Next.js
+ * оборачивать useSearchParams() в <Suspense>. Логика/верстка не меняются.
+ */
+export default function CampaignsPageWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <CampaignsPage />
+    </Suspense>
+  );
+}
