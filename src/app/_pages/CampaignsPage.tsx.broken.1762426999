@@ -3,11 +3,12 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { listCampaigns, exportExcel, readCtx, saveCtx, type Campaign } from "@/lib/campaigns";
+import { getCampaignStats, type CampaignStats } from "@/lib/campaigns";
 import { getFavCampaignIds, toggleFavCampaign, isFavCampaign, getArchivedIds, archiveCampaigns } from "@/lib/archfav";
 import { createGroup } from "@/lib/campaigns";
 import { logEvent } from "@/lib/analytics";
-import StatusTypeCell from "@/components/StatusTypeCell";
 import CampaignFilters from "@/components/CampaignFilters";
+import StatusTypeCell from "@/components/StatusTypeCell";
 
 function Tabs() {
   const path = usePathname();
@@ -29,6 +30,31 @@ type SortMode = "created_desc"|"created_asc"|"name_asc"|"name_desc";
 
 const dispBrand = (b?:string) => (b && b.trim()) ? b : "Без бренда";
 const dispAdv   = (a?:string) => (a && a.trim()) ? a : "Без рекламодателя";
+
+function fmtKM(n:number){
+  if (n >= 1_000_000){
+    const v = Math.round((n/1_000_000)*10)/10; // одна цифра после запятой
+    return String(v).replace('.', ',') + 'м';
+  }
+  if (n >= 1000){
+    const v = Math.round(n/1000);
+    return v + 'к';
+  }
+  return String(n);
+}
+function fmtPct(clicks:number, imps:number){
+  if (!imps) return '0.00%';
+  const v = (clicks / imps) * 100;
+  return v.toFixed(2).replace('.', ',') + '%';
+}
+function normStats(st: CampaignStats): CampaignStats {
+  const clamp = (n:number)=> Math.max(0, Math.trunc(n));
+  return {
+    today:     { imps: clamp(st.today.imps),     clicks: clamp(st.today.clicks) },
+    yesterday: { imps: clamp(st.yesterday.imps), clicks: clamp(st.yesterday.clicks) },
+    total:     { imps: clamp(st.total.imps),     clicks: clamp(st.total.clicks) }
+  };
+}
 
 function TriStateCheckbox({
   checked, indeterminate, onChange, ariaLabel
@@ -227,21 +253,28 @@ export default function CampaignsPage(){
         <th className="bg-gray-100 p-2 text-left">ID</th>
         <th className="bg-gray-100 p-2 text-left w-16">Сост.</th>
         <th className="bg-gray-100 p-2 text-left">Название / Даты</th>
-        <th className="bg-gray-100 p-2 text-left">Тип</th>
-        <th className="bg-gray-100 p-2 text-left">Статус</th>
+        <th className="bg-gray-100 p-2 text-right w-36">Показы</th>
+        <th className="bg-gray-100 p-2 text-right w-36">Клики</th>
+        <th className="bg-gray-100 p-2 text-right w-36">CTR%</th>
         <th className="bg-gray-100 p-2 text-right">Действия</th>
       </tr>
     </thead>
   );
 
-  const Row = ({c}:{c:Campaign}) => (
+  const Row = ({c}:{c:Campaign}) => {
+  const st = normStats(getCampaignStats(c.id));
+  return (
     <tr key={c.id} className="odd:bg-white even:bg-gray-50 hover:bg-sky-50">
       <td className="border-t p-2">
-        <input type="checkbox" checked={selected.has(c.id)} onChange={()=>toggleSel(c.id)} aria-label="Выбрать кампанию"/>
+        <input
+          type="checkbox"
+          checked={selected.has(c.id)}
+          onChange={()=>toggleSel(c.id)}
+          aria-label="Выбрать кампанию"
+        />
       </td>
       <td className="border-t p-2">
-        <button aria-label={isFavCampaign(c.id) ? "Убрать из избранного" : "В избранное"}
-          onClick={()=>{ toggleFavCampaign(c.id); router.refresh(); }} className="text-lg leading-none">
+        <button aria-label={isFavCampaign(c.id) ? "Убрать из избранного" : "В избранное"} onClick={()=>{ toggleFavCampaign(c.id); router.refresh(); }} className="text-lg leading-none">
           {isFavCampaign(c.id) ? "⭐" : "☆"}
         </button>
       </td>
@@ -251,23 +284,31 @@ export default function CampaignsPage(){
       <td className="border-t p-2"><StatusTypeCell type={c.type} status={c.status} /></td>
       <td className="border-t p-2 text-sky-700 underline-offset-2 hover:underline">
         <Link href={`/campaigns/${c.id}${fromSuffix}`}>{c.name}</Link>
-        <div className="text-xs text-gray-500">Создана: {new Date(c.createdAt).toLocaleDateString("ru-RU")}</div>
+        <div className="text-xs text-gray-500">
+          Создана: {new Date(c.createdAt).toLocaleDateString("ru-RU")}
+        </div>
       </td>
-      <td className="border-t p-2">{c.type==="Делегированная" ? <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-700">Делегированная</span> : "Собственная"}</td>
-      <td className="border-t p-2">
-        {c.status==="Активна"
-          ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">Активна</span>
-          : <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-700">Не активна</span>}
+
+      {/* Показы */}
+      <td className="border-t p-2 text-right">
+        {fmtKM(st.total.imps)}
       </td>
+
       <td className="border-t p-2 text-right" data-no-rownav>
         <Link href={`/dashboard?ids=${c.id}`} title="Дашборд" className="mr-1 rounded-full bg-sky-600 px-2 py-1 text-xs text-white">📊</Link>
         <Link href={`/builder?ids=${c.id}`}   title="Конструктор" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">🧩</Link>
         <button onClick={()=>exportExcel([c])} title="Экспорт Excel" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">⬇️</button>
-        <button onClick={()=>{ if(confirm("Архивировать кампанию?")){ archiveCampaigns([c.id]); router.refresh(); }}} title="Архивировать" className="rounded-full bg-white px-2 py-1 text-xs text-amber-700 ring-1 ring-amber-600">🗄️</button>
+        <button
+          onClick={()=>{ if(confirm("Архивировать кампанию?")){ archiveCampaigns([c.id]); router.refresh(); }}}
+          title="Архивировать"
+          className="rounded-full bg-white px-2 py-1 text-xs text-amber-700 ring-1 ring-amber-600"
+        >
+          🗄️
+        </button>
       </td>
     </tr>
   );
-
+};
   return (
     <div className="mx-auto max-w-7xl p-6">
       <Tabs/>
@@ -362,7 +403,7 @@ export default function CampaignsPage(){
                           <TableHead/>
                           <tbody>
                             {rows.map((c:Campaign)=> <Row key={c.id} c={c} />)}
-                            {rows.length===0 && (<tr><td colSpan={8} className="py-8 text-center text-gray-500">Ничего не найдено</td></tr>)}
+                            {rows.length===0 && (<tr><td colSpan={9} className="py-8 text-center text-gray-500">Ничего не найдено</td></tr>)}
                           </tbody>
                         </table>
                         {total > 10 && (

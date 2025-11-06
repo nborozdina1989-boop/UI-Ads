@@ -290,29 +290,11 @@ export default function CampaignsPage(){
       </td>
 
       {/* Показы */}
-      <td className="border-t p-2 text-right">
-        <div className="font-mono text-xs">
-          <span className="text-gray-900">{fmtKM(st.today.imps)}</span>/
-          <span className="text-gray-900">{fmtKM(st.today.clicks)}</span>/
-          <span className="text-emerald-700">{fmtPct(st.today.clicks, st.today.imps)}</span>
-        </div>
-      </td>
+      <td className="border-t p-2 text-right">{fmtKM(Math.abs((st.total?.imps)||0))}</td>
       {/* Клики */}
-      <td className="border-t p-2 text-right">
-        <div className="font-mono text-xs">
-          <span className="text-gray-900">{fmtKM(st.yesterday.imps)}</span>/
-          <span className="text-gray-900">{fmtKM(st.yesterday.clicks)}</span>/
-          <span className="text-emerald-700">{fmtPct(st.yesterday.clicks, st.yesterday.imps)}</span>
-        </div>
-      </td>
+      <td className="border-t p-2 text-right">{fmtKM(Math.abs((st.total?.clicks)||0))}</td>
       {/* CTR% */}
-      <td className="border-t p-2 text-right">
-        <div className="font-mono text-xs">
-          <span className="text-gray-900">{fmtKM(st.total.imps)}</span>/
-          <span className="text-gray-900">{fmtKM(st.total.clicks)}</span>/
-          <span className="text-emerald-700">{fmtPct(st.total.clicks, st.total.imps)}</span>
-        </div>
-      </td>
+      <td className="border-t p-2 text-right"><span className="font-mono text-xs text-emerald-700">{fmtPct(Math.abs((st.total?.clicks)||0), Math.abs((st.total?.imps)||0))}</span></td>
 
       <td className="border-t p-2 text-right" data-no-rownav>
         <Link href={`/dashboard?ids=${c.id}`} title="Дашборд" className="mr-1 rounded-full bg-sky-600 px-2 py-1 text-xs text-white">📊</Link>
@@ -351,7 +333,7 @@ export default function CampaignsPage(){
             delegated={delegated}
             onDelegatedChange={setDelegated}
             favOnly={favOnly}
-            onFavOnlyChange={setFavOnly}
+            onFavChange={setFavOnly}
             idFilter={idFilter}
             onIdFilterChange={setIdFilter}
             advFilter={advFilter}
