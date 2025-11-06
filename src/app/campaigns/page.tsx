@@ -1,12 +1,5 @@
-import { Suspense } from 'react';
+'use client';
 import CampaignsPage from '@/app/_pages/CampaignsPage';
-
-export const dynamic = 'force-dynamic';
-
 export default function Page() {
-  return (
-    <Suspense fallback={null}>
-      <CampaignsPage />
-    </Suspense>
-  );
+  return <CampaignsPage />;
 }
