@@ -313,57 +313,46 @@ const [mounted, setMounted] = useState(false);
     router.replace(`/campaigns?${qs.toString()}`);
   }, [q, groupMode, sort, favOnly, own, delegated, status, router]);
   const TableHead = () => (
-  <thead>
-    <tr>
-      <th className="bg-gray-100 p-2 w-8"></th>
-      <th className="bg-gray-100 p-2 w-8"></th>
-      <th className="bg-gray-100 p-2 text-left">ID</th>
-      <th className="bg-gray-100 p-2 text-left w-12">Сост.</th>
-      <th className="bg-gray-100 p-2 text-left">Название / Даты</th>
-      <th className="bg-gray-100 p-2 text-right w-28">Показы</th>
-      <th className="bg-gray-100 p-2 text-right w-28">Клики</th>
-      <th className="bg-gray-100 p-2 text-right w-24">CTR%</th>
-      <th className="bg-gray-100 p-2 text-right">Действия</th>
-    </tr>
-  </thead>
-);
-const Row = ({c}:{c:Campaign}) => {
+    <thead>
+      <tr>
+        <th className="bg-gray-100 p-2 w-8"></th>
+        <th className="bg-gray-100 p-2 w-8"></th>
+        <th className="bg-gray-100 p-2 text-left w-20">ID</th>
+        <th className="bg-gray-100 p-2 text-left w-16">Сост.</th>
+        <th className="bg-gray-100 p-2 text-left w-[45%]">Название / Даты</th><th className="bg-gray-100 p-2 text-right w-28">Показы</th>
+        <th className="bg-gray-100 p-2 text-right w-28">Клики</th>
+        <th className="bg-gray-100 p-2 text-right w-28">CTR%</th>
+        <th className="bg-gray-100 p-2 text-right w-\[220px\]">Действия</th>
+      </tr>
+    </thead>
+  );
+  const Row = ({c}:{c:Campaign}) => {
   const st = normStats(getCampaignStats(c.id));
-  const meas = (typeof (globalThis as any).getMeasureCategory === "function") ? ((globalThis as any).getMeasureCategory(c)) : (typeof getMeasureCategory === "function" ? (getMeasureCategory as any)(c) : undefined);
   return (
-    <tr key={c.id} className="odd:bg-white even:bg-gray-50 hover:bg-sky-50">
-      <td className="border-t p-2">
-        <input type="checkbox" checked={selected.has(c.id)} onChange={()=>toggleSel(c.id)} aria-label="Выбрать кампанию"/>
-      </td>
-      <td className="border-t p-2">
-        <button aria-label={isFavCampaign(c.id) ? "Убрать из избранного" : "В избранное"} onClick={()=>{ toggleFavCampaign(c.id); router.refresh(); }} className="text-lg leading-none">{isFavCampaign(c.id) ? "⭐" : "☆"}</button>
-      </td>
-      <td className="border-t p-2 font-mono text-[13px] text-sky-700 underline-offset-2 hover:underline"><Link href={`/campaigns/`}>{c.id}</Link></td>
-      <td className="border-t p-2"><StatusTypeCell type={c.type} status={c.status} /></td>
-      <td className="border-t p-2 text-sky-700 underline-offset-2 hover:underline">
-        <Link href={`/campaigns/`}>{c.name}</Link>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-          <span>Создана: {new Date(c.createdAt).toLocaleDateString("ru-RU")}</span>
-          <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600 ring-1 ring-slate-200">Бренд: {c.brand || "—"}</span>
-          <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600 ring-1 ring-slate-200">Рекламодатель: {c.advertiser || "—"}</span>
-          <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600 ring-1 ring-slate-200">Владелец: {c.owner || "—"}</span>
-          {meas && (<span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700 ring-1 ring-slate-200">{meas}</span>)}
-        </div>
-        <TagPills tags={(tagsMap[c.id] || getCampaignTags(c.id))} onAdd={() => addTagsQuick(c.id)} onRemove={(t) => removeTag(c.id, t)} />
-      </td>
+    <tr key={c.id} className="odd:bg-white even:bg-gray-50 hover:bg-sky-50">{/* Показы */}
       <td className="border-t p-2 text-right">{fmtKM(Math.abs((st.total?.imps)||0))}</td>
+      {/* Клики */}
       <td className="border-t p-2 text-right">{fmtKM(Math.abs((st.total?.clicks)||0))}</td>
+      {/* CTR% */}
       <td className="border-t p-2 text-right"><span className="font-mono text-xs text-emerald-700">{fmtPct(Math.abs((st.total?.clicks)||0), Math.abs((st.total?.imps)||0))}</span></td>
-      <td className="border-t p-2 text-right" data-no-rownav>
-        <Link href={`/dashboard?ids=`} title="Дашборд" className="mr-1 rounded-full bg-sky-600 px-2 py-1 text-xs text-white">📊</Link>
-        <Link href={`/builder?ids=`} title="Конструктор" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">🧩</Link>
+      <td className="border-t p-2" data-no-rownav>
+          
+          <div className="flex justify-end gap-2"><Link href={`/dashboard?ids=${c.id}`} title="Дашборд" className="mr-1 rounded-full bg-sky-600 px-2 py-1 text-xs text-white">📊</Link>
+        <Link href={`/builder?ids=${c.id}`}   title="Конструктор" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">🧩</Link>
         <button onClick={()=>exportExcel([c])} title="Экспорт Excel" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">⬇️</button>
-        <button onClick={()=>{ if(confirm("Архивировать кампанию?")){ archiveCampaigns([c.id]); router.refresh(); }}} title="Архивировать" className="rounded-full bg-white px-2 py-1 text-xs text-amber-700 ring-1 ring-amber-600">🗄️</button>
-      </td>
+        <button
+          onClick={()=>{ if(confirm("Архивировать кампанию?")){ archiveCampaigns([c.id]); router.refresh(); }}}
+          title="Архивировать"
+          className="rounded-full bg-white px-2 py-1 text-xs text-amber-700 ring-1 ring-amber-600"
+        >
+          🗄️
+        </button>
+          </div>
+        </td>
     </tr>
   );
 };
-return (
+  return (
     <div className="mx-auto max-w-7xl p-6">
       <Tabs/>
       {!mounted ? (
