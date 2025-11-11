@@ -1,104 +1,229 @@
 "use client";
+import React, { useState, useRef } from "react";
+import Link from "next/link";
 
-import React from "react";
+type GroupMode = "none" | "brand" | "adv" | "tree";
+type SortMode = "created_desc" | "created_asc" | "name_asc" | "name_desc";
 
-type Props = {
-  activeGroup?: "tree" | "list";
-  onGroupChange?: (v: "tree" | "list") => void;
-  fav?: boolean;
-  own?: boolean;
-  deleg?: boolean;
-  onToggleFav?: () => void;
-  onToggleOwn?: () => void;
-  onToggleDeleg?: () => void;
-  sort?: string;
-  onSortChange?: (v: string) => void;
+type TokenInputProps = {
+  values: string[];
+  onChange: (v: string[]) => void;
+  placeholder?: string;
+  suggestions?: string[];   // для datalist (типы измерения)
+  className?: string;
 };
+function TokenInput({ values, onChange, placeholder, suggestions, className }: TokenInputProps) {
+  const [text, setText] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
-export default function CampaignFilters({
-  activeGroup = "tree",
-  onGroupChange,
-  fav = false,
-  own = false,
-  deleg = false,
-  onToggleFav,
-  onToggleOwn,
-  onToggleDeleg,
-  sort = "created_desc",
-  onSortChange,
-}: Props) {
+  const commit = (raw: string) => {
+    const parts = raw.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+    if (!parts.length) return;
+    const set = new Set(values);
+    parts.forEach(p => set.add(p));
+    onChange(Array.from(set));
+    setText("");
+  };
+  const onKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
+    if (e.key === "Enter" || e.key === "," ) {
+      e.preventDefault();
+      commit(text);
+    }
+    if (e.key === "Backspace" && text === "" && values.length) {
+      const next = values.slice(0, -1);
+      onChange(next);
+    }
+  };
+  const removeAt = (i: number) => {
+    const next = values.slice();
+    next.splice(i, 1);
+    onChange(next);
+    inputRef.current?.focus();
+  };
+
+  const id = suggestions ? `ti-${placeholder?.replace(/\s+/g,"-")}-${Math.random().toString(36).slice(2)}` : undefined;
+
   return (
-    <div className="flex flex-wrap gap-2 items-center justify-between mb-4">
-      <div className="flex gap-2">
+    <div className={`min-w-[140px] flex items-center flex-wrap gap-1 rounded-xl border border-slate-200 px-2 py-1.5 ${className||""}`}>
+      {values.map((v, i) => (
+        <span key={`${v}-${i}`} className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+          {v}
+          <button onClick={()=>removeAt(i)} className="ml-1 text-slate-500 hover:text-slate-700">×</button>
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        list={suggestions ? id : undefined}
+        value={text}
+        onChange={(e)=>setText(e.target.value)}
+        onBlur={()=>commit(text)}
+        onKeyDown={onKeyDown}
+        placeholder={values.length ? "" : (placeholder || "")}
+        className="flex-1 min-w-[80px] outline-none text-sm placeholder:text-slate-400"
+      />
+      {suggestions && (
+        <datalist id={id}>
+          {suggestions.map(s => <option key={s} value={s}/>)}
+        </datalist>
+      )}
+    </div>
+  );
+}
+
+interface Props {
+  q: string;
+  onQChange: (v: string) => void;
+
+  own: boolean;
+  onOwnChange: (v: boolean) => void;
+
+  delegated: boolean;
+  onDelegatedChange: (v: boolean) => void;
+
+  status: "all" | "active" | "inactive";
+  onStatusChange: (v: "all" | "active" | "inactive") => void;
+
+  favOnly: boolean;
+  onFavChange: (v: boolean) => void;
+
+  groupMode: GroupMode;
+  onGroupChange: (v: GroupMode) => void;
+
+  sort: SortMode;
+  onSortChange: (v: SortMode) => void;
+
+  // Доп. поиск (теперь массивы)
+  idFilter: string[];
+  onIdFilterChange: (v: string[]) => void;
+
+  brandFilter: string[];
+  onBrandFilterChange: (v: string[]) => void;
+
+  advFilter: string[];
+  onAdvFilterChange: (v: string[]) => void;
+
+  tagFilter: string[];
+  onTagFilterChange: (v: string[]) => void;
+
+  measFilter: string[];
+  onMeasFilterChange: (v: string[]) => void;
+
+  allMeasures: string[];
+}
+
+export default function CampaignFilters(props: Props) {
+  const {
+    q,onQChange,own,onOwnChange,delegated,onDelegatedChange,
+    status,onStatusChange,favOnly,onFavChange,
+    groupMode,onGroupChange,sort,onSortChange,
+    idFilter,onIdFilterChange,brandFilter,onBrandFilterChange,
+    advFilter,onAdvFilterChange,tagFilter,onTagFilterChange,
+    measFilter,onMeasFilterChange,allMeasures
+  } = props;
+
+  const [showAdvanced, setShowAdvanced] = useState(true);
+
+  const btnBase = "rounded-full px-3 py-1.5 text-sm transition-colors";
+  const btnOff = "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200";
+  const btnOn  = "bg-sky-50 text-sky-700 border border-sky-200";
+
+  return (
+    <div className="mb-4 rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+      {/* ряд 1 */}
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          value={q}
+          onChange={(e) => onQChange(e.target.value)}
+          placeholder="Поиск по названию / ID / бренду / рекламодателю"
+          className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-400 focus:ring-0"
+        />
         <button
-          onClick={() => onGroupChange && onGroupChange("tree")}
-          className={`px-3 py-1 rounded-[var(--adr-radius-sm)] text-sm ${
-            activeGroup === "tree"
-              ? "bg-[var(--adr-blue)] text-white"
-              : "bg-white text-[var(--adr-text)] border border-[var(--adr-border)]"
-          }`}
+          type="button"
+          onClick={() => setShowAdvanced((p) => !p)}
+          className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-sm text-slate-700 border border-slate-200 hover:bg-slate-50"
         >
-          Иерархия
+          {showAdvanced ? "Скрыть фильтры" : "Фильтры"}
+          <span className="text-xs">{showAdvanced ? "▴" : "▾"}</span>
         </button>
-        <button
-          onClick={() => onGroupChange && onGroupChange("list")}
-          className={`px-3 py-1 rounded-[var(--adr-radius-sm)] text-sm ${
-            activeGroup === "list"
-              ? "bg-[var(--adr-blue)] text-white"
-              : "bg-white text-[var(--adr-text)] border border-[var(--adr-border)]"
-          }`}
+        <Link
+          href="/mediaplan/upload"
+          className="ml-auto rounded-full bg-sky-600 px-3 py-1.5 text-sm text-white hover:bg-sky-700 whitespace-nowrap"
         >
-          Список
-        </button>
+          Добавить медиаплан
+        </Link>
       </div>
 
-      <div className="flex gap-2">
-        <button
-          onClick={onToggleFav}
-          className={`px-3 py-1 rounded-[var(--adr-radius-sm)] text-sm border ${
-            fav
-              ? "bg-[var(--adr-green)] border-[var(--adr-green)] text-[#002E6D]"
-              : "bg-white border-[var(--adr-border)] text-[var(--adr-text)]"
-          }`}
-        >
-          Избранное
-        </button>
-        <button
-          onClick={onToggleOwn}
-          className={`px-3 py-1 rounded-[var(--adr-radius-sm)] text-sm border ${
-            own
-              ? "bg-[var(--adr-blue)] border-[var(--adr-blue)] text-white"
-              : "bg-white border-[var(--adr-border)] text-[var(--adr-text)]"
-          }`}
-        >
-          Мои
-        </button>
-        <button
-          onClick={onToggleDeleg}
-          className={`px-3 py-1 rounded-[var(--adr-radius-sm)] text-sm border ${
-            deleg
-              ? "bg-[var(--adr-light-blue)] border-[var(--adr-light-blue)] text-[var(--adr-dark-blue)]"
-              : "bg-white border-[var(--adr-border)] text-[var(--adr-text)]"
-          }`}
-        >
-          Делегированные
-        </button>
-      </div>
+      {showAdvanced && (
+        <>
+          {/* ряд 2 — кнопки */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => onOwnChange(!own)} className={`${btnBase} ${own ? btnOn : btnOff}`}>Свои</button>
+            <button type="button" onClick={() => onDelegatedChange(!delegated)} className={`${btnBase} ${delegated ? btnOn : btnOff}`}>Делегированные</button>
+            <button type="button" onClick={() => onStatusChange(status === "active" ? "all" : "active")} className={`${btnBase} ${status === "active" ? btnOn : btnOff}`}>Активные</button>
+            <button type="button" onClick={() => onStatusChange(status === "inactive" ? "all" : "inactive")} className={`${btnBase} ${status === "inactive" ? btnOn : btnOff}`}>Не активные</button>
+            <button type="button" onClick={() => onFavChange(!favOnly)} className={`${btnBase} ${favOnly ? btnOn : btnOff} flex items-center gap-1`}><span>⭐</span> Избранное</button>
 
-      <div className="flex items-center gap-2">
-        <label className="text-sm text-[var(--adr-text-muted)]">
-          Сортировка
-        </label>
-        <select
-          value={sort}
-          onChange={(e) => onSortChange && onSortChange(e.target.value)}
-          className="text-sm border border-[var(--adr-border)] rounded-[var(--adr-radius-sm)] px-2 py-1 bg-white"
-        >
-          <option value="created_desc">По дате создания (новые сверху)</option>
-          <option value="created_asc">По дате создания (старые сверху)</option>
-          <option value="name_asc">По названию (A→Я)</option>
-        </select>
-      </div>
+            <select
+              value={groupMode}
+              onChange={(e) => onGroupChange(e.target.value as GroupMode)}
+              className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:border-sky-400"
+            >
+              <option value="none">Без группировки</option>
+              <option value="brand">Бренд</option>
+              <option value="adv">Рекламодатель</option>
+              <option value="tree">Иерархия</option>
+            </select>
+
+            <select
+              value={sort}
+              onChange={(e) => onSortChange(e.target.value as SortMode)}
+              className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:border-sky-400"
+            >
+              <option value="created_desc">Сначала новые</option>
+              <option value="created_asc">Сначала старые</option>
+              <option value="name_asc">Название A→Z</option>
+              <option value="name_desc">Название Z→A</option>
+            </select>
+          </div>
+
+          {/* ряд 3 — ДОП. ПОИСК (чипы) */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-slate-400 pr-2">Доп. поиск:</span>
+
+            <TokenInput
+              values={idFilter}
+              onChange={onIdFilterChange}
+              placeholder="ID"
+              className="w-[160px]"
+            />
+            <TokenInput
+              values={brandFilter}
+              onChange={onBrandFilterChange}
+              placeholder="Бренд"
+              className="w-[180px]"
+            />
+            <TokenInput
+              values={advFilter}
+              onChange={onAdvFilterChange}
+              placeholder="Рекламодатель"
+              className="w-[200px]"
+            />
+            <TokenInput
+              values={tagFilter}
+              onChange={onTagFilterChange}
+              placeholder="Поиск по тегам"
+              className="w-[220px]"
+            />
+            <TokenInput
+              values={measFilter}
+              onChange={onMeasFilterChange}
+              placeholder="Тип измерения"
+              suggestions={allMeasures}
+              className="w-[220px]"
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

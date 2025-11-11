@@ -63,9 +63,7 @@ function TriStateCheckbox({
 export default function CampaignsPage(){
 const MEASURE_TYPES=["click","adserving","adservingABF","IVTadserving","IVTadservingView","viewPartnerMedia","viewAdserving","vastCounter","IVTvastCounter","viewPartnerVideo","IVTadservingVideoView","IVTadservingVideoViewIntgr","mraid","mraidVideo","adservingVideo","IVTadservingVideo","adservingVideoView","audit"] as const;
 type MeasurementType = typeof MEASURE_TYPES[number];
-function seeded(id:number){ let x = Math.imul(id ^ 0x9e3779b1, 0x85ebca6b) >>> 0; x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35) >>> 0; x ^= x >>> 16; return x / 0xFFFFFFFF; }
-function pickMeasures(id:number): MeasurementType[] { const r = seeded(id); const n = r < 0.5 ? 1 : (r < 0.8 ? 2 : 3); const pool = [...MEASURE_TYPES]; const out: MeasurementType[] = []; let s = r; for (let i=0; i<n; i++){ s = seeded(id + i + 101); const idx = Math.floor(s * pool.length); out.push(pool.splice(idx,1)[0] as MeasurementType); } return out; }
-function getMeasures(c:any): MeasurementType[] { if (Array.isArray(c?.measures)) return c.measures as MeasurementType[]; const id = Number(c?.id) || 0; return pickMeasures(id); }
+function getMeasures(c:any):MeasurementType[]{return Array.isArray(c?.measures)?(c.measures as MeasurementType[]):[];}
   const [mounted, setMounted] = useState(false);
   useEffect(()=>{ setMounted(true); },[]);
   const router = useRouter();
@@ -84,53 +82,48 @@ function getMeasures(c:any): MeasurementType[] { if (Array.isArray(c?.measures))
   const [favOnly, setFavOnly] = useState((params.get("fav")||"0")==="1");
   const [tagsMap, setTagsMap] = useState<Record<number, string[]>>(()=>getAllTagsMap());
   // новые 4 фильтра
-  const [idFilter, setIdFilter] = useState<string[]>([]);
-  const [advFilter, setAdvFilter] = useState<string[]>([]);
-  const [brandFilter, setBrandFilter] = useState<string[]>([]);
-  const [tagFilter, setTagFilter] = useState<string[]>([]);
-  const [measFilter, setMeasFilter] = useState<string[]>([]);
+  const [idFilter, setIdFilter] = useState("");
+  const [advFilter, setAdvFilter] = useState("");
+  const [brandFilter, setBrandFilter] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
+  const [measFilter, setMeasFilter] = useState("");
   const allMeasures = useMemo(()=>{ const s=new Set<string>(); listCampaigns().forEach(c=>getMeasures(c).forEach(m=>s.add(m))); return Array.from(s).sort(); },[]);
-  const resetFilters = () => { setQ(""); setOwn(false); setDelegated(false); setStatus("all"); setFavOnly(false); setIdFilter([]); setBrandFilter([]); setAdvFilter([]); setTagFilter([]); setMeasFilter([]); };
   const all = listCampaigns();
   const archivedSet = useMemo(()=> new Set(getArchivedIds()),[]);
   const favSet = useMemo(()=> new Set(getFavCampaignIds()),[]);
-  const filtered = useMemo(() => {
+  const filtered = useMemo(()=>{
     const term = q.trim().toLowerCase();
-    const lower = (a: any) => {
-  const arr =
-    Array.isArray(a) ? a :
-    (typeof a === "string" ? a.split(/[ ,;\s]+/) : []);
-  return arr
-    .map((x: any) => String(x ?? "").trim().toLowerCase())
-    .filter(Boolean);
-};
-    const idWanted    = lower(idFilter);
-    const advWanted   = lower(advFilter);
-    const brandWanted = lower(brandFilter);
-    const tagWanted   = lower(tagFilter);
-    const measWanted  = lower(measFilter);
-
+    const idTerm = idFilter.trim().toLowerCase();
+    const advTerm = advFilter.trim().toLowerCase();
+    const brandTerm = brandFilter.trim().toLowerCase();
+    const tagTerm = tagFilter.trim().toLowerCase();
     return all
       .filter(c => !archivedSet.has(c.id))
-      .filter(c => !term || [c.id, c.name, c.brand, c.advertiser].some(v => String(v||"").toLowerCase().includes(term)))
-      .filter(c => idWanted.length    ? idWanted.some(w => String(c.id).toLowerCase().includes(w)) : true)
-      .filter(c => advWanted.length   ? advWanted.some(w => String(c.advertiser||"").toLowerCase().includes(w)) : true)
-      .filter(c => brandWanted.length ? brandWanted.some(w => String(c.brand||"").toLowerCase().includes(w)) : true)
+      // универсальный поиск
+      .filter(c => !term || [c.id, c.name, c.brand, c.advertiser].some(x=> String(x||"").toLowerCase().includes(term)))
+      // доп. фильтр: ID
+      .filter(c => !idTerm || String(c.id).toLowerCase().includes(idTerm))
+      // доп. фильтр: рекламодатель
+      .filter(c => !advTerm || String(c.advertiser || "").toLowerCase().includes(advTerm))
+      // доп. фильтр: бренд
+      .filter(c => !brandTerm || String(c.brand || "").toLowerCase().includes(brandTerm))
+      // доп. фильтр: тип измерения
       .filter(c => {
-        if (!tagWanted.length) return true;
-        const actual = (tagsMap[c.id] || getCampaignTags(c.id)).map(t => t.toLowerCase());
-        return tagWanted.some(w => actual.includes(w));
+        const wanted = (measFilter||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
+        if(!wanted.length) return true;
+        const actual = getMeasures(c).map(t=>String(t).toLowerCase());
+        return wanted.every(w => actual.includes(w));
       })
-      .filter(c => {
-        if (!measWanted.length) return true;
-        const actual = getMeasures(c).map(t => String(t).toLowerCase());
-        return measWanted.every(w => actual.includes(w));
-      })
+      // доп. фильтр: тег (пока ищем по имени, потом подключим реальные теги)
+      .filter(c => { const wanted = tagTerm.split(",").map(s=>s.trim().toLowerCase()).filter(Boolean); if (!tagTerm || !wanted.length) return true; const actual = (tagsMap[c.id] || getCampaignTags(c.id)).map(t=>t.toLowerCase()); return wanted.some(w => actual.includes(w)); })
+      // статус
       .filter(c => status==="all" ? true : (status==="active" ? c.status==="Активна" : c.status!=="Активна"))
+      // свои / делег
       .filter(c => own ? c.type!=="Делегированная" : true)
       .filter(c => delegated ? c.type==="Делегированная" : true)
+      // избранные
       .filter(c => favOnly ? favSet.has(c.id) : true);
-  }, [all, archivedSet, q, status, own, delegated, favOnly, favSet, idFilter, advFilter, brandFilter, tagFilter, measFilter, tagsMap]);
+  }, [all, archivedSet, q, status, own, delegated, favOnly, favSet, idFilter, advFilter, brandFilter, tagFilter, tagsMap]);
   const sorted = useMemo(()=>{
     const arr = [...filtered];
     const byName = (a:Campaign,b:Campaign)=> a.name.localeCompare(b.name, "ru");
@@ -282,13 +275,6 @@ function getMeasures(c:any): MeasurementType[] { if (Array.isArray(c?.measures))
     setTagsMap(prev=>({ ...prev, [id]: tags }));
   };
   const addTagsQuick = (id: number) => {
-
-  const removeTag = (id: number, t: string) => {
-    const norm = String(t).trim().toLowerCase();
-    const curr = (tagsMap[id] || getCampaignTags(id)).filter(x => x.toLowerCase() !== norm);
-    setCampaignTags(id, curr);
-    setTagsMap(prev => ({ ...prev, [id]: curr }));
-  };
     const curr = (tagsMap[id] || getCampaignTags(id)) || [];
     const next = prompt("Добавить теги (через запятую/пробел/точку с запятой)", "");
     if (next === null) return;
@@ -315,14 +301,14 @@ function getMeasures(c:any): MeasurementType[] { if (Array.isArray(c?.measures))
       <tr>
         <th className="bg-gray-100 p-2 w-8"></th>
         <th className="bg-gray-100 p-2 w-8"></th>
-        <th className="bg-gray-100 p-2 text-left w-20">ID</th>
+        <th className="bg-gray-100 p-2 text-left">ID</th>
         <th className="bg-gray-100 p-2 text-left w-16">Сост.</th>
-        <th className="bg-gray-100 p-2 text-left w-[45%]">Название / Даты</th>
-        <th className="bg-gray-100 p-2 text-left w-64">Тип измерения</th>
-        <th className="bg-gray-100 p-2 text-right w-28">Показы</th>
-        <th className="bg-gray-100 p-2 text-right w-28">Клики</th>
-        <th className="bg-gray-100 p-2 text-right w-28">CTR%</th>
-        <th className="bg-gray-100 p-2 text-right w-\[220px\]">Действия</th>
+        <th className="bg-gray-100 p-2 text-left">Название / Даты</th>
+        <th className="bg-gray-100 p-2 text-left">Тип измерения</th>
+        <th className="bg-gray-100 p-2 text-right w-36">Показы</th>
+        <th className="bg-gray-100 p-2 text-right w-36">Клики</th>
+        <th className="bg-gray-100 p-2 text-right w-36">CTR%</th>
+        <th className="bg-gray-100 p-2 text-right">Действия</th>
       </tr>
     </thead>
   );
@@ -343,16 +329,19 @@ function getMeasures(c:any): MeasurementType[] { if (Array.isArray(c?.measures))
           {isFavCampaign(c.id) ? "⭐" : "☆"}
         </button>
       </td>
-      <td className="border-t p-2 w-20 font-mono text-xs text-sky-700 underline-offset-2 hover:underline">
+      <td className="border-t p-2 font-mono text-sky-700 underline-offset-2 hover:underline">
         <Link href={`/campaigns/${c.id}${fromSuffix}`}>{c.id}</Link>
       </td>
-      <td className="border-t p-2"><StatusTypeCell type={c.type} status={(c.status==="Активна"?"Включена":(c.status==="Не активна"?"Завершена":c.status))} /></td>
-      <td className="border-t p-2 w-[45%] text-sky-700 underline-offset-2 hover:underline">
+      <td className="border-t p-2"><StatusTypeCell type={c.type} status={c.status} /></td>
+      <td className="border-t p-2 text-sky-700 underline-offset-2 hover:underline">
         <Link href={`/campaigns/${c.id}${fromSuffix}`}>{c.name}</Link>
-<div className="text-xs text-gray-500 flex flex-wrap items-center gap-2">Создана: {new Date(c.createdAt).toLocaleDateString("ru-RU")} <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">Бренд: {c.brand || "—"}</span> <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">Рекламодатель: {c.advertiser || "—"}</span> <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">Владелец: {c.owner || c.ownerName || c.manager || "—"}</span></div>
+        <div className="text-xs text-gray-500">
+          Создана: {new Date(c.createdAt).toLocaleDateString("ru-RU")}
+        </div>
         <TagPills tags={(tagsMap[c.id] || getCampaignTags(c.id))} onAdd={() => addTagsQuick(c.id)} onRemove={(t) => removeTag(c.id, t)} />
       </td>
-      <td className="border-t p-2 w-64">{(() => {
+      <td className="border-t p-2">
+        {(() => {
           const ms = getMeasures(c);
           if (!ms.length) return <span className="text-xs text-gray-400">—</span>;
           const shown = ms.slice(0,3);
@@ -375,9 +364,9 @@ function getMeasures(c:any): MeasurementType[] { if (Array.isArray(c?.measures))
       <td className="border-t p-2 text-right">{fmtKM(Math.abs((st.total?.clicks)||0))}</td>
       {/* CTR% */}
       <td className="border-t p-2 text-right"><span className="font-mono text-xs text-emerald-700">{fmtPct(Math.abs((st.total?.clicks)||0), Math.abs((st.total?.imps)||0))}</span></td>
-      <td className="border-t p-2" data-no-rownav>
-          
-          <div className="flex justify-end gap-2"><Link href={`/dashboard?ids=${c.id}`} title="Дашборд" className="mr-1 rounded-full bg-sky-600 px-2 py-1 text-xs text-white">📊</Link>
+      <td className="border-t p-2 text-right" data-no-rownav>
+          <button onClick={()=>editTags(c.id)} title="Теги кампании" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">🏷</button>
+        <Link href={`/dashboard?ids=${c.id}`} title="Дашборд" className="mr-1 rounded-full bg-sky-600 px-2 py-1 text-xs text-white">📊</Link>
         <Link href={`/builder?ids=${c.id}`}   title="Конструктор" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">🧩</Link>
         <button onClick={()=>exportExcel([c])} title="Экспорт Excel" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">⬇️</button>
         <button
@@ -387,8 +376,7 @@ function getMeasures(c:any): MeasurementType[] { if (Array.isArray(c?.measures))
         >
           🗄️
         </button>
-          </div>
-        </td>
+      </td>
     </tr>
   );
 };
@@ -414,18 +402,21 @@ function getMeasures(c:any): MeasurementType[] { if (Array.isArray(c?.measures))
             onDelegatedChange={setDelegated}
             favOnly={favOnly}
             onFavChange={setFavOnly}
-            onReset={resetFilters}
             idFilter={idFilter}
             onIdFilterChange={setIdFilter}
             advFilter={advFilter}
             onAdvFilterChange={setAdvFilter}
             brandFilter={brandFilter}
             onBrandFilterChange={setBrandFilter}
-            tagFilter={tagFilter}
-            onTagFilterChange={setTagFilter}
+	            tagFilter={tagFilter}
+	            onTagFilterChange={setTagFilter}
             measFilter={measFilter}
             onMeasFilterChange={setMeasFilter}
-            allMeasures={allMeasures}
+	            measFilter={measFilter}
+	            onMeasFilterChange={setMeasFilter}
+	            allMeasures={allMeasures}
+            tagFilter={tagFilter}
+            onTagFilterChange={setTagFilter}
           />
           {ids.length>0 && (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 ring-1 ring-sky-200">

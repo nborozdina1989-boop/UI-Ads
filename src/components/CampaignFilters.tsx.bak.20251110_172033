@@ -148,8 +148,8 @@ export default function CampaignFilters(props: Props) {
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => onOwnChange(!own)} className={`${btnBase} ${own ? btnOn : btnOff}`}>Свои</button>
             <button type="button" onClick={() => onDelegatedChange(!delegated)} className={`${btnBase} ${delegated ? btnOn : btnOff}`}>Делегированные</button>
-            <button type="button" onClick={() => onStatusChange(status === "active" ? "all" : "active")} className={`${btnBase} ${status === "active" ? btnOn : btnOff}`}>Включенные</button>
-            <button type="button" onClick={() => onStatusChange(status === "inactive" ? "all" : "inactive")} className={`${btnBase} ${status === "inactive" ? btnOn : btnOff}`}>Завершенные</button>
+            <button type="button" onClick={() => onStatusChange(status === "active" ? "all" : "active")} className={`${btnBase} ${status === "active" ? btnOn : btnOff}`}>Активные</button>
+            <button type="button" onClick={() => onStatusChange(status === "inactive" ? "all" : "inactive")} className={`${btnBase} ${status === "inactive" ? btnOn : btnOff}`}>Не активные</button>
             <button type="button" onClick={() => onFavChange(!favOnly)} className={`${btnBase} ${favOnly ? btnOn : btnOff} flex items-center gap-1`}><span>⭐</span> Избранное</button>
 
             <select value={groupMode} onChange={(e) => onGroupChange(e.target.value as GroupMode)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:border-sky-400">

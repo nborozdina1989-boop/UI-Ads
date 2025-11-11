@@ -24,7 +24,10 @@ function TokenInput({ values, onChange, placeholder, suggestions, className }: T
     setText("");
   };
   const onKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
-    if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commit(text); }
+    if (e.key === "Enter" || e.key === "," ) {
+      e.preventDefault();
+      commit(text);
+    }
     if (e.key === "Backspace" && text === "" && values.length) {
       const next = values.slice(0, -1);
       onChange(next);
@@ -57,7 +60,7 @@ function TokenInput({ values, onChange, placeholder, suggestions, className }: T
       />
       {suggestions && (
         <datalist id={id}>
-          {suggestions.map(s => <option key={s} value={s} />)}
+          {suggestions.map(s => <option key={s} value={s}/>)}
         </datalist>
       )}
     </div>
@@ -79,7 +82,6 @@ interface Props {
   onGroupChange: (v: GroupMode) => void;
   sort: SortMode;
   onSortChange: (v: SortMode) => void;
-
   idFilter: string[];
   onIdFilterChange: (v: string[]) => void;
   brandFilter: string[];
@@ -91,8 +93,6 @@ interface Props {
   measFilter: string[];
   onMeasFilterChange: (v: string[]) => void;
   allMeasures: string[];
-
-  onReset: () => void;
 }
 
 export default function CampaignFilters(props: Props) {
@@ -102,8 +102,7 @@ export default function CampaignFilters(props: Props) {
     groupMode,onGroupChange,sort,onSortChange,
     idFilter,onIdFilterChange,brandFilter,onBrandFilterChange,
     advFilter,onAdvFilterChange,tagFilter,onTagFilterChange,
-    measFilter,onMeasFilterChange,allMeasures,
-    onReset
+    measFilter,onMeasFilterChange,allMeasures
   } = props;
 
   const [showAdvanced, setShowAdvanced] = useState(true);
@@ -128,13 +127,6 @@ export default function CampaignFilters(props: Props) {
           {showAdvanced ? "Скрыть фильтры" : "Фильтры"}
           <span className="text-xs">{showAdvanced ? "▴" : "▾"}</span>
         </button>
-        <button
-          type="button"
-          onClick={onReset}
-          className="text-sm text-sky-600 hover:text-sky-700"
-        >
-          Сбросить
-        </button>
         <Link
           href="/mediaplan/upload"
           className="ml-auto rounded-full bg-sky-600 px-3 py-1.5 text-sm text-white hover:bg-sky-700 whitespace-nowrap"
@@ -148,18 +140,26 @@ export default function CampaignFilters(props: Props) {
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => onOwnChange(!own)} className={`${btnBase} ${own ? btnOn : btnOff}`}>Свои</button>
             <button type="button" onClick={() => onDelegatedChange(!delegated)} className={`${btnBase} ${delegated ? btnOn : btnOff}`}>Делегированные</button>
-            <button type="button" onClick={() => onStatusChange(status === "active" ? "all" : "active")} className={`${btnBase} ${status === "active" ? btnOn : btnOff}`}>Включенные</button>
-            <button type="button" onClick={() => onStatusChange(status === "inactive" ? "all" : "inactive")} className={`${btnBase} ${status === "inactive" ? btnOn : btnOff}`}>Завершенные</button>
+            <button type="button" onClick={() => onStatusChange(status === "active" ? "all" : "active")} className={`${btnBase} ${status === "active" ? btnOn : btnOff}`}>Активные</button>
+            <button type="button" onClick={() => onStatusChange(status === "inactive" ? "all" : "inactive")} className={`${btnBase} ${status === "inactive" ? btnOn : btnOff}`}>Не активные</button>
             <button type="button" onClick={() => onFavChange(!favOnly)} className={`${btnBase} ${favOnly ? btnOn : btnOff} flex items-center gap-1`}><span>⭐</span> Избранное</button>
 
-            <select value={groupMode} onChange={(e) => onGroupChange(e.target.value as GroupMode)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:border-sky-400">
+            <select
+              value={groupMode}
+              onChange={(e) => onGroupChange(e.target.value as GroupMode)}
+              className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:border-sky-400"
+            >
               <option value="none">Без группировки</option>
               <option value="brand">Бренд</option>
               <option value="adv">Рекламодатель</option>
               <option value="tree">Иерархия</option>
             </select>
 
-            <select value={sort} onChange={(e) => onSortChange(e.target.value as SortMode)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:border-sky-400">
+            <select
+              value={sort}
+              onChange={(e) => onSortChange(e.target.value as SortMode)}
+              className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:border-sky-400"
+            >
               <option value="created_desc">Сначала новые</option>
               <option value="created_asc">Сначала старые</option>
               <option value="name_asc">Название A→Z</option>
