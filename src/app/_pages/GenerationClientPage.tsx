@@ -1,6 +1,9 @@
 'use client';
 import styles from "../generation/adriver.module.css";
 import { useMemo, useState, useEffect } from 'react';
+import { useSearchParams } from "next/navigation";
+import { AlertTriangle, ArrowRight, CheckCircle2, Circle, Download, RotateCcw, Upload } from "lucide-react";
+import { getMediaplan, type MediaplanRecord, type PlacementRow } from "@/lib/mediaplan";
 
 /** Локальные константы — без импортов, чтобы ничего вне generation не трогать */
 const CODE_TYPES = [
@@ -32,9 +35,9 @@ function Tabs() {
   );
 }
 function StatusIcon({status}:{status:'ok'|'warn'|'dirty'}){
-  if(status==='ok') return <span title="ОК" className="text-green-600">✔︎</span>;
-  if(status==='dirty') return <span title="Есть неприменённые правки" className="text-purple-600">●</span>;
-  return <span title="Не найдено" className="text-amber-500">⚠️</span>;
+  if(status==='ok') return <span title="ОК"><CheckCircle2 className="h-4 w-4 text-emerald-600" /></span>;
+  if(status==='dirty') return <span title="Есть неприменённые правки"><Circle className="h-4 w-4 fill-[color:var(--adr-blue)] text-[color:var(--adr-blue)]" /></span>;
+  return <span title="Не найдено"><AlertTriangle className="h-4 w-4 text-amber-600" /></span>;
 }
 function ColumnsMenu({vis,setVis}:{vis:VisibleCols,setVis:(v:VisibleCols)=>void}){
   const toggle=(k:keyof VisibleCols)=>setVis({...vis,[k]:!vis[k]});
@@ -55,21 +58,78 @@ function ColumnsMenu({vis,setVis}:{vis:VisibleCols,setVis:(v:VisibleCols)=>void}
 
 /** Данные */
 type RowStatus='ok'|'warn'|'dirty';
-type Row={ id:number; title:string; banners:number; supplier?:SupplierKey|''; med?:boolean; ivt?:boolean; view?:boolean; codeType?:string; status:RowStatus; pendingChanges?:boolean; };
+type Row={ id:number; sourceIndex:number; title:string; banners:number; supplier?:SupplierKey|''; med?:boolean; ivt?:boolean; view?:boolean; codeType?:string; status:RowStatus; pendingChanges?:boolean; };
 const INITIAL: Row[] = [
-  { id:4471765, title:'Yandex', banners:1, supplier:'yandex', med:false, ivt:false, view:false, codeType:'', status:'ok' },
-  { id:4471766, title:'IVI',    banners:1, supplier:'',        med:false, ivt:false, view:false, codeType:'', status:'warn' },
-  { id:4471767, title:'Hyper',  banners:1, supplier:'',        med:false, ivt:false, view:false, codeType:'', status:'warn' },
+  { id:4471765, sourceIndex:0, title:'Yandex', banners:1, supplier:'yandex', med:false, ivt:false, view:false, codeType:'', status:'ok' },
+  { id:4471766, sourceIndex:1, title:'IVI',    banners:1, supplier:'',        med:false, ivt:false, view:false, codeType:'', status:'warn' },
+  { id:4471767, sourceIndex:2, title:'Hyper',  banners:1, supplier:'',        med:false, ivt:false, view:false, codeType:'', status:'warn' },
 ];
 type VisibleCols = { supplier:boolean; med:boolean; ivt:boolean; view:boolean; codeType:boolean; banners:boolean; };
 const DEFAULT_VIS:VisibleCols={ supplier:true,med:true,ivt:true,view:true,codeType:true,banners:true };
 
 /** sessionStorage helpers */
 const ssGet = <T,>(k:string, fallback:T):T => { try { const v=sessionStorage.getItem(k); return v? JSON.parse(v):fallback; } catch { return fallback; } };
-const ssSet = (k:string, v:any) => { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch {} };
+const ssSet = (k:string, v:unknown) => { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+function detectSupplier(value: string | undefined): SupplierKey | '' {
+  const normalized = String(value || '').toLowerCase();
+  if (!normalized) return '';
+  if (normalized.includes('янд') || normalized.includes('yandex')) return 'yandex';
+  if (normalized.includes('ivi')) return 'ivi';
+  if (normalized.includes('ozon')) return 'ozon';
+  if (normalized.includes('hyper')) return 'hyper';
+  if (normalized.includes('vk')) return 'vk';
+  if (normalized.includes('rambler')) return 'rambler';
+  if (normalized.includes('гпм') || normalized.includes('gpmd')) return 'gpmd';
+  return '';
+}
+
+function buildGenerationRowsFromMediaplan(item: MediaplanRecord): Row[] {
+  const generated = new Set(item.generatedPositionIndexes || []);
+  const importRows = item.import?.rows || [];
+  if (importRows.length) {
+    return importRows
+      .map((row: PlacementRow, index) => {
+        const ivt = row.measurement_type === 'ivt' || row.measurement_type === 'full_verification';
+        const view = row.measurement_type === 'audit_viewability' || row.measurement_type === 'full_verification';
+        const supplier = detectSupplier(row.supplier);
+        const codeType = row.code_type || '';
+        return {
+          id: index + 1,
+          sourceIndex: index,
+          title: row.platform_name || row.banner_name || `Позиция ${index + 1}`,
+          banners: row.banner_name ? 1 : 1,
+          supplier,
+          med: Boolean(row.auditor_mediascope),
+          ivt,
+          view,
+          codeType,
+          status: supplier && codeType ? 'ok' : 'warn',
+        };
+      })
+      .filter((row) => !generated.has(row.sourceIndex));
+  }
+
+  return (item.scenarioNames || [])
+    .map((scenario, index) => ({
+      id: index + 1,
+      sourceIndex: index,
+      title: scenario,
+      banners: 1,
+      supplier: '',
+      med: false,
+      ivt: false,
+      view: false,
+      codeType: '',
+      status: 'warn' as const,
+    }))
+    .filter((row) => !generated.has(row.sourceIndex));
+}
 
 /** Страница */
 export default function GenerationPage(){
+  const searchParams = useSearchParams();
+  const mediaplanId = searchParams.get('mp') || '';
   const [rows,setRows]=useState<Row[]>(()=>ssGet('autogen_rows_tmp', INITIAL));
   const [vis,setVis]=useState<VisibleCols>(()=>ssGet('autogen_vis', DEFAULT_VIS));
   const [qId,setQId]=useState(()=>ssGet('autogen_qId',''));
@@ -77,11 +137,29 @@ export default function GenerationPage(){
   const [selectAll,setSelectAll]=useState(false);
   const [modalWarn,setModalWarn]=useState<null|{warn:number}>(null);
   const [bulk,setBulk]=useState({ivt:false, view:false, med:false});
+  const [activeMediaplanTitle, setActiveMediaplanTitle] = useState('');
+  const [sourceRows, setSourceRows] = useState<Row[] | null>(null);
 
   useEffect(()=>ssSet('autogen_qId', qId),[qId]);
   useEffect(()=>ssSet('autogen_qTitle', qTitle),[qTitle]);
   useEffect(()=>ssSet('autogen_vis', vis),[vis]);
   useEffect(()=>ssSet('autogen_rows_tmp', rows),[rows]);
+
+  useEffect(() => {
+    if (!mediaplanId) return;
+    const mediaplan = getMediaplan(mediaplanId);
+    if (!mediaplan) return;
+    const nextRows = buildGenerationRowsFromMediaplan(mediaplan);
+    setRows(nextRows);
+    setSourceRows(nextRows);
+    setQId('');
+    setQTitle('');
+    setActiveMediaplanTitle(mediaplan.title);
+    try {
+      sessionStorage.setItem('autogen_context_mp', mediaplanId);
+      sessionStorage.setItem('autogen_rows_tmp', JSON.stringify(nextRows));
+    } catch {}
+  }, [mediaplanId]);
 
   const filtered=useMemo(()=>rows.filter(r=>{
     const okId=qId.trim()===''||String(r.id).includes(qId.trim());
@@ -100,7 +178,7 @@ export default function GenerationPage(){
       pendingChanges:false
     })));
   }
-  function resetAll(){ setRows(INITIAL); setSelectAll(false); }
+  function resetAll(){ setRows(sourceRows || INITIAL); setSelectAll(false); }
   function applyBulk(){
     setRows(prev=> prev.map(r=> selectAll ? {...r, ivt:bulk.ivt, view:bulk.view, med:bulk.med} : r));
   }
@@ -115,7 +193,7 @@ export default function GenerationPage(){
     const warn=rows.filter(r=>r.status!=='ok').length;
     if(warn){ setModalWarn({warn}); return; }
     try{ sessionStorage.setItem('autogen_rows', JSON.stringify(rows)); }catch{}
-    window.location.href='/generation/codes';
+    window.location.href=mediaplanId ? `/generation/codes?mp=${mediaplanId}` : '/generation/codes';
   }
 
   const th="px-3 py-2 text-xs uppercase text-slate-500"; const td="px-3 py-2 text-sm border-t";
@@ -125,8 +203,14 @@ export default function GenerationPage(){
       <div className="flex items-center justify-between">
         <Tabs/>
         <div className="flex items-center gap-2">
-          <button disabled className={`${styles.btn} ${styles.btnGhost}`}>Загрузить Excel ⤴︎</button>
-          <button disabled className={`${styles.btn} ${styles.btnGhost}`}>Скачать шаблон ⤓</button>
+          <button disabled className={`${styles.btn} ${styles.btnGhost}`}>
+            <Upload className="h-4 w-4" />
+            <span>Загрузить Excel</span>
+          </button>
+          <button disabled className={`${styles.btn} ${styles.btnGhost}`}>
+            <Download className="h-4 w-4" />
+            <span>Скачать шаблон</span>
+          </button>
           <ColumnsMenu vis={vis} setVis={setVis}/>
         </div>
       </div>
@@ -137,9 +221,28 @@ export default function GenerationPage(){
         <div className="text-sm text-slate-500">Общие настройки</div>
         <select className="border rounded-md px-2 py-1 text-sm bg-white"><option>Выберите...</option></select>
         <button onClick={suggestAll} className={`${styles.btn} ${styles.btnGhost}`}>Получить подсказку</button>
-        <button onClick={proceed} className={`ml-auto ${styles.btn} ${styles.btnPrimary}`}>Далее →</button>
-        <button onClick={resetAll} title="Сбросить" className={`${styles.btn} ${styles.btnGhost}`}>🧹</button>
+        <button onClick={proceed} className={`ml-auto ${styles.btn} ${styles.btnPrimary}`}>
+          <span>Далее</span>
+          <ArrowRight className="h-4 w-4" />
+        </button>
+        <button onClick={resetAll} title="Сбросить" className={`${styles.btn} ${styles.btnGhost}`}>
+          <RotateCcw className="h-4 w-4" />
+        </button>
       </div>
+
+      {mediaplanId && activeMediaplanTitle && (
+        <div className={`${styles.alert}`}>
+          <div className="font-medium text-slate-900">Генерация кодов для медиаплана «{activeMediaplanTitle}»</div>
+          <div className="text-sm text-slate-600">В генерацию подставлены только позиции без кодов из текущего медиаплана. Если вы несколько раз дозагружали позиции и ещё не выпускали для них коды, здесь будет весь актуальный список без созданных кодов.</div>
+        </div>
+      )}
+
+      {mediaplanId && activeMediaplanTitle && rows.length === 0 && (
+        <div className={`${styles.alert}`}>
+          <div className="font-medium text-slate-900">Для этого медиаплана нет позиций без кодов</div>
+          <div className="text-sm text-slate-600">Все текущие позиции уже помечены как позиции с созданными кодами.</div>
+        </div>
+      )}
 
       <div className="flex items-center gap-4 my-2">
         <label className='flex items-center gap-2'><input type='checkbox' checked={bulk.med} onChange={e=>setBulk({...bulk, med:e.target.checked})}/> Mediascope</label>
@@ -223,7 +326,7 @@ export default function GenerationPage(){
             </p>
             <div className="flex gap-2 justify-end">
               <button onClick={()=>setModalWarn(null)} className={`${styles.btn} ${styles.btnGhost}`}>Вернуться</button>
-              <a href="/generation/codes" className={`${styles.btn} ${styles.btnPrimary}`}>Продолжить</a>
+              <a href={mediaplanId ? `/generation/codes?mp=${mediaplanId}` : "/generation/codes"} className={`${styles.btn} ${styles.btnPrimary}`}>Продолжить</a>
             </div>
           </div>
         </div>

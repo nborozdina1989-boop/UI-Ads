@@ -1,11 +1,14 @@
 'use client';
 import styles from "../adriver.module.css";
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from "next/navigation";
+import { ArrowLeft, ChevronDown, ChevronUp, ClipboardCopy, Download, ExternalLink, History, RotateCw } from "lucide-react";
+import { markMediaplanPositionsGenerated } from "@/lib/mediaplan";
 
 /** Типы */
 type SupplierKey='yandex'|'ivi'|'ozon'|'hyper'|'vk'|'rambler'|'gpmd';
-type Row={id:number; title:string; supplier?:SupplierKey|''; ivt?:boolean; view?:boolean; codeType?:string;};
-type Batch={id:number; createdAt:number; items:Row[]; status:'ready'|'warn'};
+type Row={id:number; sourceIndex:number; title:string; supplier?:SupplierKey|''; ivt?:boolean; view?:boolean; codeType?:string;};
+type Batch={id:number; createdAt:number; items:Row[]; status:'ready'|'warn'; mediaplanId?:string};
 
 /** Справочники */
 const SUPPLIER_LABEL:Record<SupplierKey,string>={yandex:'Yandex',ivi:'IVI',ozon:'Ozon',hyper:'Hyper',vk:'VK',rambler:'Rambler',gpmd:'ГПМД'};
@@ -27,7 +30,7 @@ function buildCode(r:Row){
 
 /** Хранилище в сессии */
 const ssGet=<T,>(k:string,f:T):T=>{try{const v=sessionStorage.getItem(k);return v?JSON.parse(v):f;}catch{return f;}};
-const ssSet=(k:string,v:any)=>{try{sessionStorage.setItem(k,JSON.stringify(v));}catch{}};
+const ssSet=(k:string,v:unknown)=>{try{sessionStorage.setItem(k,JSON.stringify(v));}catch{}};
 
 /** Чтение "последней партии" из /generation */
 const readRows=():Row[]=>{try{const raw=sessionStorage.getItem('autogen_rows');return raw?JSON.parse(raw):[]}catch{return[]}};
@@ -45,39 +48,53 @@ function Tabs(){
     </div>
   );
 }
-const Dot=({ok}:{ok:boolean})=><span className={`${styles.dot} ${ok?styles.dotGreen:styles.dotWarn}`} />;
 
-export default function CodesPage(){
+function CodesPageContent(){
+  const searchParams = useSearchParams();
+  const mediaplanId = searchParams.get('mp') || '';
   const [batches,setBatches]=useState<Batch[]>([]);
   const [collapsed,setCollapsed]=useState<Record<number,boolean>>(()=>ssGet('codes_collapsed',{}));
   const [selected,setSelected]=useState<Set<string>>(()=>new Set(ssGet<string[]>('codes_selected',[])));
   const [selectAll,setSelectAll]=useState(false);
+  const [contextMp, setContextMp] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   /** Создаём новую партию из последнего шага "Далее" (если есть) */
   useEffect(()=>{
     const cur = readRows();
     let list = readBatches();
+    if (mediaplanId) {
+      try { sessionStorage.setItem('autogen_context_mp', mediaplanId); } catch {}
+      setContextMp(mediaplanId);
+    } else {
+      try { setContextMp(sessionStorage.getItem('autogen_context_mp') || ''); } catch {}
+    }
     if(cur.length){
       const lastId = list[0]?.id ?? 267;
       const status:Batch['status']=cur.every(r=>r.supplier && r.codeType)?'ready':'warn';
-      const batch:Batch={id:lastId+1, createdAt:Date.now(), items:cur, status};
+      const batch:Batch={id:lastId+1, createdAt:Date.now(), items:cur, status, mediaplanId: mediaplanId || sessionStorage.getItem('autogen_context_mp') || ''};
       list = [batch, ...list].slice(0,10); // максимум 10 партий для демо
       writeBatches(list);
       sessionStorage.removeItem('autogen_rows');
     }
     setBatches(list);
-  },[]);
+  },[mediaplanId]);
 
   /** Персист UI состояний */
   useEffect(()=>ssSet('codes_collapsed',collapsed),[collapsed]);
   useEffect(()=>ssSet('codes_selected',Array.from(selected)),[selected]);
 
+  const visibleBatches = useMemo(
+    () => (contextMp ? batches.filter((batch) => batch.mediaplanId === contextMp) : batches),
+    [batches, contextMp]
+  );
+
   /** Верхняя панель: свёрнуто/развёрнуто */
-  const allCollapsed = useMemo(()=>batches.length>0 && batches.every(b=>collapsed[b.id]),[batches,collapsed]);
+  const allCollapsed = useMemo(()=>visibleBatches.length>0 && visibleBatches.every(b=>collapsed[b.id]),[visibleBatches,collapsed]);
   const toggleAll=()=>setCollapsed(prev=>{
     const now:Record<number,boolean>={...prev};
     const v=!allCollapsed;
-    batches.forEach(b=>{ now[b.id]=v; });
+    visibleBatches.forEach(b=>{ now[b.id]=v; });
     return now;
   });
 
@@ -88,7 +105,7 @@ export default function CodesPage(){
     setSelectAll(v);
     setSelected(prev=>{
       const n=new Set(prev);
-      batches.forEach(b=>{
+      visibleBatches.forEach(b=>{
         b.items.forEach(r=>{
           const k=key(b.id,r.id);
           if(v) n.add(k); else n.delete(k);
@@ -101,7 +118,7 @@ export default function CodesPage(){
   /** Массовая копия */
   const copySelected=()=>{
     const parts:string[]=[];
-    batches.forEach(b=>{
+    visibleBatches.forEach(b=>{
       b.items.forEach(r=>{
         if(selected.has(key(b.id,r.id))) parts.push(buildCode(r));
       });
@@ -111,13 +128,25 @@ export default function CodesPage(){
 
   /** Метрики/проблемы (для резюме наверху) */
   const issues = useMemo(()=>{
-    let missingSupplier:number[]=[]; let missingType:number[]=[];
-    batches.forEach(b=>b.items.forEach(r=>{
+    const missingSupplier:number[]=[]; const missingType:number[]=[];
+    visibleBatches.forEach(b=>b.items.forEach(r=>{
       if(!r.supplier) missingSupplier.push(r.id);
       if(!r.codeType) missingType.push(r.id);
     }));
     return {missingSupplier, missingType, count: missingSupplier.length+missingType.length};
-  },[batches]);
+  },[visibleBatches]);
+
+  function finalizeCodes(){
+    if (!contextMp) return;
+    const indexes = Array.from(
+      new Set(
+        visibleBatches.flatMap((batch) => batch.items.map((item) => item.sourceIndex)).filter((index) => Number.isInteger(index))
+      )
+    );
+    markMediaplanPositionsGenerated(contextMp, indexes);
+    setSuccessMessage(`Коды созданы для ${indexes.length} позиций медиаплана.`);
+    window.location.href = `/mediaplan/${contextMp}?flash=codes-created`;
+  }
 
   return (
     <div className={`${styles.theme} p-6 space-y-4`}>
@@ -126,13 +155,28 @@ export default function CodesPage(){
         <div className={styles.toolbar}>
           <label className="flex items-center gap-2"><input type="checkbox" checked={selectAll} onChange={e=>onSelectAll(e.target.checked)}/> Все</label>
           <button className={`${styles.btn} ${styles.btnGhost}`} onClick={toggleAll}>{allCollapsed?'Развернуть':'Свернуть'}</button>
-          <button className={styles.iconBtn} title="Обновить" onClick={()=>location.reload()}>↻</button>
+          <button className={styles.iconBtn} title="Обновить" onClick={()=>location.reload()}>
+            <RotateCw className="h-4 w-4" />
+          </button>
           <select className={`${styles.btn}`} defaultValue=""><option value="">Выбрать сценарии</option></select>
           <button className={`${styles.btn} ${styles.btnGhost}`} onClick={copySelected}>Скопировать выбранные</button>
-          <a href="/generation" className={`${styles.btn} ${styles.btnGhost}`}>← Назад</a>
-          <a href="/404" className={`${styles.btn} ${styles.btnPrimary}`}>Заказать коды</a>
+          <a href={contextMp ? `/generation?mp=${contextMp}` : "/generation"} className={`${styles.btn} ${styles.btnGhost}`}>
+            <ArrowLeft className="h-4 w-4" />
+            <span>Назад</span>
+          </a>
+          {contextMp ? (
+            <button type="button" onClick={finalizeCodes} className={`${styles.btn} ${styles.btnPrimary}`}>Заказать коды</button>
+          ) : (
+            <a href="/404" className={`${styles.btn} ${styles.btnPrimary}`}>Заказать коды</a>
+          )}
         </div>
       </div>
+
+      {successMessage && (
+        <div className={`${styles.alert}`}>
+          <span className="text-slate-700">{successMessage}</span>
+        </div>
+      )}
 
       {issues.count>0 && (
         <div className={`${styles.alert} ${styles.alertWarn}`}>
@@ -146,7 +190,7 @@ export default function CodesPage(){
 
       {/* Партии */}
       <div className="space-y-3">
-        {batches.map(batch=>{
+        {visibleBatches.map(batch=>{
           const ok = batch.status==='ready';
           const collapsedCls = collapsed[batch.id] ? 'collapsed' : '';
           const d = new Date(batch.createdAt);
@@ -159,16 +203,22 @@ export default function CodesPage(){
                   <input type="checkbox" checked={batch.items.every(r=>selected.has(key(batch.id,r.id)))} onChange={e=>{
                     const v=e.target.checked; setSelected(prev=>{const n=new Set(prev); batch.items.forEach(r=>{const k=key(batch.id,r.id); if(v) n.add(k); else n.delete(k);}); return n;});
                   }}/>
-                  <button className={`${styles.btn} ${styles.btnGhost}`} onClick={()=>setCollapsed(p=>({...p,[batch.id]:!p[batch.id]}))}>{collapsed[batch.id]?'▼':'▲'}</button>
+                  <button
+                    className={`${styles.btn} ${styles.btnGhost}`}
+                    onClick={() => setCollapsed((p) => ({ ...p, [batch.id]: !p[batch.id] }))}
+                    aria-label={collapsed[batch.id] ? "Развернуть партию" : "Свернуть партию"}
+                  >
+                    {collapsed[batch.id] ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                  </button>
                   <a href="/404" className={styles.link}>{title}</a>
                   <span className={styles.badge}>{d.toLocaleDateString()} {d.toLocaleTimeString().slice(0,5)}</span>
                   <span className={styles.badge}><span className={`${styles.dot} ${ok?styles.dotGreen:styles.dotWarn}`} /> {ok?'Готовы':'Есть проблемы'}</span>
                   <span className={`${styles.badge} ${styles.badgeMuted}`}>{batch.items.length} сценария</span>
                 </div>
                 <div className={styles.headerActions}>
-                  <a href="/404" className={styles.iconBtn} title="Excel">🕒</a>
-                  <a href="/404" className={styles.iconBtn} title="Архив">⬇️</a>
-                  <a href="/404" className={styles.iconBtn} title="Коды">↗️</a>
+                  <a href="/404" className={styles.iconBtn} title="Excel"><History className="h-4 w-4" /></a>
+                  <a href="/404" className={styles.iconBtn} title="Архив"><Download className="h-4 w-4" /></a>
+                  <a href="/404" className={styles.iconBtn} title="Коды"><ExternalLink className="h-4 w-4" /></a>
                 </div>
               </div>
 
@@ -192,9 +242,11 @@ export default function CodesPage(){
                         <span>{r.title}</span>
                       </div>
                       <div className={styles.rowActions}>
-                        <button className={styles.iconBtn} title="Копировать код" onClick={()=>{ try{navigator.clipboard?.writeText(buildCode(r));}catch{}}}>📋</button>
-                        <a className={styles.iconBtn} title="Скачать" href="/404">⬇️</a>
-                        <a className={styles.iconBtn} title="Открыть" href="/404">↗️</a>
+                        <button className={styles.iconBtn} title="Копировать код" onClick={()=>{ try{navigator.clipboard?.writeText(buildCode(r));}catch{}}}>
+                          <ClipboardCopy className="h-4 w-4" />
+                        </button>
+                        <a className={styles.iconBtn} title="Скачать" href="/404"><Download className="h-4 w-4" /></a>
+                        <a className={styles.iconBtn} title="Открыть" href="/404"><ExternalLink className="h-4 w-4" /></a>
                       </div>
                     </div>
                   );
@@ -203,10 +255,20 @@ export default function CodesPage(){
             </div>
           );
         })}
-        {batches.length===0 && (
-          <div className={`${styles.alert}`}><span className="text-slate-600">Нет кодов. Вернитесь на «Генерация» и нажмите «Далее».</span></div>
+        {visibleBatches.length===0 && (
+          <div className={`${styles.alert}`}>
+            <span className="text-slate-600">Нет кодов. Вернитесь на «Генерация» и нажмите «Далее».</span>
+          </div>
         )}
       </div>
     </div>
+  );
+}
+
+export default function CodesPage() {
+  return (
+    <Suspense fallback={null}>
+      <CodesPageContent />
+    </Suspense>
   );
 }
