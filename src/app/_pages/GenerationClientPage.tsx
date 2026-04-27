@@ -67,9 +67,31 @@ const INITIAL: Row[] = [
 type VisibleCols = { supplier:boolean; med:boolean; ivt:boolean; view:boolean; codeType:boolean; banners:boolean; };
 const DEFAULT_VIS:VisibleCols={ supplier:true,med:true,ivt:true,view:true,codeType:true,banners:true };
 
+const K_GENERATION_ROWS_TMP = 'generation_rows_tmp';
+const K_GENERATION_VIS = 'generation_vis';
+const K_GENERATION_QID = 'generation_qId';
+const K_GENERATION_QTITLE = 'generation_qTitle';
+const K_GENERATION_ROWS = 'generation_rows';
+const K_GENERATION_CONTEXT_MP = 'generation_context_mp';
+const LEGACY_GENERATION_ROWS_TMP = 'autogen_rows_tmp';
+const LEGACY_GENERATION_VIS = 'autogen_vis';
+const LEGACY_GENERATION_QID = 'autogen_qId';
+const LEGACY_GENERATION_QTITLE = 'autogen_qTitle';
+
 /** sessionStorage helpers */
-const ssGet = <T,>(k:string, fallback:T):T => { try { const v=sessionStorage.getItem(k); return v? JSON.parse(v):fallback; } catch { return fallback; } };
-const ssSet = (k:string, v:unknown) => { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch {} };
+const ssGet = <T,>(keys:string|string[], fallback:T):T => {
+  try {
+    const list = Array.isArray(keys) ? keys : [keys];
+    for (const key of list) {
+      const value = sessionStorage.getItem(key);
+      if (value) return JSON.parse(value);
+    }
+    return fallback;
+  } catch {
+    return fallback;
+  }
+};
+const ssSet = (key:string, v:unknown) => { try { sessionStorage.setItem(key, JSON.stringify(v)); } catch {} };
 
 function detectSupplier(value: string | undefined): SupplierKey | '' {
   const normalized = String(value || '').toLowerCase();
@@ -130,20 +152,20 @@ function buildGenerationRowsFromMediaplan(item: MediaplanRecord): Row[] {
 export default function GenerationPage(){
   const searchParams = useSearchParams();
   const mediaplanId = searchParams.get('mp') || '';
-  const [rows,setRows]=useState<Row[]>(()=>ssGet('autogen_rows_tmp', INITIAL));
-  const [vis,setVis]=useState<VisibleCols>(()=>ssGet('autogen_vis', DEFAULT_VIS));
-  const [qId,setQId]=useState(()=>ssGet('autogen_qId',''));
-  const [qTitle,setQTitle]=useState(()=>ssGet('autogen_qTitle',''));
+  const [rows,setRows]=useState<Row[]>(()=>ssGet([K_GENERATION_ROWS_TMP, LEGACY_GENERATION_ROWS_TMP], INITIAL));
+  const [vis,setVis]=useState<VisibleCols>(()=>ssGet([K_GENERATION_VIS, LEGACY_GENERATION_VIS], DEFAULT_VIS));
+  const [qId,setQId]=useState(()=>ssGet([K_GENERATION_QID, LEGACY_GENERATION_QID],''));
+  const [qTitle,setQTitle]=useState(()=>ssGet([K_GENERATION_QTITLE, LEGACY_GENERATION_QTITLE],''));
   const [selectAll,setSelectAll]=useState(false);
   const [modalWarn,setModalWarn]=useState<null|{warn:number}>(null);
   const [bulk,setBulk]=useState({ivt:false, view:false, med:false});
   const [activeMediaplanTitle, setActiveMediaplanTitle] = useState('');
   const [sourceRows, setSourceRows] = useState<Row[] | null>(null);
 
-  useEffect(()=>ssSet('autogen_qId', qId),[qId]);
-  useEffect(()=>ssSet('autogen_qTitle', qTitle),[qTitle]);
-  useEffect(()=>ssSet('autogen_vis', vis),[vis]);
-  useEffect(()=>ssSet('autogen_rows_tmp', rows),[rows]);
+  useEffect(()=>ssSet(K_GENERATION_QID, qId),[qId]);
+  useEffect(()=>ssSet(K_GENERATION_QTITLE, qTitle),[qTitle]);
+  useEffect(()=>ssSet(K_GENERATION_VIS, vis),[vis]);
+  useEffect(()=>ssSet(K_GENERATION_ROWS_TMP, rows),[rows]);
 
   useEffect(() => {
     if (!mediaplanId) return;
@@ -156,8 +178,8 @@ export default function GenerationPage(){
     setQTitle('');
     setActiveMediaplanTitle(mediaplan.title);
     try {
-      sessionStorage.setItem('autogen_context_mp', mediaplanId);
-      sessionStorage.setItem('autogen_rows_tmp', JSON.stringify(nextRows));
+      sessionStorage.setItem(K_GENERATION_CONTEXT_MP, mediaplanId);
+      sessionStorage.setItem(K_GENERATION_ROWS_TMP, JSON.stringify(nextRows));
     } catch {}
   }, [mediaplanId]);
 
@@ -192,7 +214,7 @@ export default function GenerationPage(){
   function proceed(){
     const warn=rows.filter(r=>r.status!=='ok').length;
     if(warn){ setModalWarn({warn}); return; }
-    try{ sessionStorage.setItem('autogen_rows', JSON.stringify(rows)); }catch{}
+    try{ sessionStorage.setItem(K_GENERATION_ROWS, JSON.stringify(rows)); }catch{}
     window.location.href=mediaplanId ? `/generation/codes?mp=${mediaplanId}` : '/generation/codes';
   }
 

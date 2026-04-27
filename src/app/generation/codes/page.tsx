@@ -29,13 +29,19 @@ function buildCode(r:Row){
 }
 
 /** Хранилище в сессии */
-const ssGet=<T,>(k:string,f:T):T=>{try{const v=sessionStorage.getItem(k);return v?JSON.parse(v):f;}catch{return f;}};
+const K_GENERATION_ROWS = 'generation_rows';
+const K_GENERATION_BATCHES = 'generation_batches';
+const K_GENERATION_CONTEXT_MP = 'generation_context_mp';
+const LEGACY_GENERATION_ROWS = 'autogen_rows';
+const LEGACY_GENERATION_BATCHES = 'autogen_batches';
+const LEGACY_GENERATION_CONTEXT_MP = 'autogen_context_mp';
+const ssGet=<T,>(keys:string|string[],f:T):T=>{try{const list=Array.isArray(keys)?keys:[keys];for(const key of list){const v=sessionStorage.getItem(key);if(v)return JSON.parse(v);}return f;}catch{return f;}};
 const ssSet=(k:string,v:unknown)=>{try{sessionStorage.setItem(k,JSON.stringify(v));}catch{}};
 
 /** Чтение "последней партии" из /generation */
-const readRows=():Row[]=>{try{const raw=sessionStorage.getItem('autogen_rows');return raw?JSON.parse(raw):[]}catch{return[]}};
-const readBatches=():Batch[]=>ssGet('autogen_batches',[]);
-const writeBatches=(b:Batch[])=>ssSet('autogen_batches',b);
+const readRows=():Row[]=>{try{const raw=sessionStorage.getItem(K_GENERATION_ROWS) || sessionStorage.getItem(LEGACY_GENERATION_ROWS);return raw?JSON.parse(raw):[]}catch{return[]}};
+const readBatches=():Batch[]=>ssGet([K_GENERATION_BATCHES, LEGACY_GENERATION_BATCHES],[]);
+const writeBatches=(b:Batch[])=>ssSet(K_GENERATION_BATCHES,b);
 
 /** Компоненты */
 function Tabs(){
@@ -64,18 +70,19 @@ function CodesPageContent(){
     const cur = readRows();
     let list = readBatches();
     if (mediaplanId) {
-      try { sessionStorage.setItem('autogen_context_mp', mediaplanId); } catch {}
+      try { sessionStorage.setItem(K_GENERATION_CONTEXT_MP, mediaplanId); } catch {}
       setContextMp(mediaplanId);
     } else {
-      try { setContextMp(sessionStorage.getItem('autogen_context_mp') || ''); } catch {}
+      try { setContextMp(sessionStorage.getItem(K_GENERATION_CONTEXT_MP) || sessionStorage.getItem(LEGACY_GENERATION_CONTEXT_MP) || ''); } catch {}
     }
     if(cur.length){
       const lastId = list[0]?.id ?? 267;
       const status:Batch['status']=cur.every(r=>r.supplier && r.codeType)?'ready':'warn';
-      const batch:Batch={id:lastId+1, createdAt:Date.now(), items:cur, status, mediaplanId: mediaplanId || sessionStorage.getItem('autogen_context_mp') || ''};
+      const batch:Batch={id:lastId+1, createdAt:Date.now(), items:cur, status, mediaplanId: mediaplanId || sessionStorage.getItem(K_GENERATION_CONTEXT_MP) || sessionStorage.getItem(LEGACY_GENERATION_CONTEXT_MP) || ''};
       list = [batch, ...list].slice(0,10); // максимум 10 партий для демо
       writeBatches(list);
-      sessionStorage.removeItem('autogen_rows');
+      sessionStorage.removeItem(K_GENERATION_ROWS);
+      sessionStorage.removeItem(LEGACY_GENERATION_ROWS);
     }
     setBatches(list);
   },[mediaplanId]);
