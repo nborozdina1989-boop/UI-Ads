@@ -3,28 +3,53 @@ import styles from "../adriver.module.css";
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, ChevronDown, ChevronUp, ClipboardCopy, Download, ExternalLink, History, RotateCw } from "lucide-react";
-import { markMediaplanPositionsGenerated } from "@/lib/mediaplan";
+import { SUPPLIERS, type SupplierKey } from "@/lib/autogenSuppliers";
 
 /** Типы */
-type SupplierKey='yandex'|'ivi'|'ozon'|'hyper'|'vk'|'rambler'|'gpmd';
-type Row={id:number; sourceIndex:number; title:string; supplier?:SupplierKey|''; ivt?:boolean; view?:boolean; codeType?:string;};
+type Row={
+  id:number;
+  sourceIndex:number;
+  title:string;
+  supplier?:SupplierKey|'';
+  ivt?:boolean;
+  view?:boolean;
+  codeType?:string;
+  targetUrl?:string;
+  erir?:string;
+  comment?:string;
+  macroExss?:string;
+  macroExtId?:string;
+  macroAdvId?:string;
+  macroBundleId?:string;
+  vastVersion?: '2.0'|'3.0';
+  bannerIndex?: number;
+};
 type Batch={id:number; createdAt:number; items:Row[]; status:'ready'|'warn'; mediaplanId?:string};
-
-/** Справочники */
-const SUPPLIER_LABEL:Record<SupplierKey,string>={yandex:'Yandex',ivi:'IVI',ozon:'Ozon',hyper:'Hyper',vk:'VK',rambler:'Rambler',gpmd:'ГПМД'};
 
 /** Код по строке (ленивая генерация) */
 function buildCode(r:Row){
   const t=(r.codeType||'').toLowerCase();
+  const supplier = r.supplier ? SUPPLIERS[r.supplier].label : 'unknown';
+  const hidden = r.supplier ? SUPPLIERS[r.supplier].macros?.hidden || {} : {};
+  const target = r.targetUrl ? `&target=${encodeURIComponent(r.targetUrl)}` : '';
+  const erir = r.erir ? `&erir=${encodeURIComponent(r.erir)}` : '';
+  const macros = [
+    r.macroExss && `exss=${encodeURIComponent(r.macroExss)}`,
+    r.macroExtId && `aextid=${encodeURIComponent(r.macroExtId)}`,
+    r.macroAdvId && `advid=${encodeURIComponent(r.macroAdvId)}`,
+    r.macroBundleId && `bundleid=${encodeURIComponent(r.macroBundleId)}`,
+    ...Object.entries(hidden).map(([key, value]) => `${key}=${encodeURIComponent(value)}`),
+  ].filter(Boolean).join('&');
+  const macroQuery = macros ? `&${macros}` : '';
   if(t.includes('vast')){
-    const url=`https://demo.adriver.local/vast?pid=${r.id}&sup=${encodeURIComponent(r.supplier?SUPPLIER_LABEL[r.supplier]:'unknown')}&ivt=${r.ivt?'1':'0'}&view=${r.view?'1':'0'}&type=${encodeURIComponent(r.codeType||'')}`;
+    const url=`https://demo.adriver.local/vast?pid=${r.id}&sup=${encodeURIComponent(supplier)}&ivt=${r.ivt?'1':'0'}&view=${r.view?'1':'0'}&vast=${r.vastVersion || '3.0'}&type=${encodeURIComponent(r.codeType||'')}${target}${erir}${macroQuery}`;
     return `<VASTAdTagURI><![CDATA[${url}]]></VASTAdTagURI>`;
   }
   if(t.includes('mraid')){
-    const url=`https://demo.adriver.local/mraid?pid=${r.id}&sup=${encodeURIComponent(r.supplier?SUPPLIER_LABEL[r.supplier]:'unknown')}&type=${encodeURIComponent(r.codeType||'')}`;
+    const url=`https://demo.adriver.local/mraid?pid=${r.id}&sup=${encodeURIComponent(supplier)}&type=${encodeURIComponent(r.codeType||'')}${target}${erir}${macroQuery}`;
     return `mraid.open('${url}')`;
   }
-  const px=`https://demo.adriver.local/audit?pid=${r.id}&sup=${encodeURIComponent(r.supplier?SUPPLIER_LABEL[r.supplier]:'unknown')}&ivt=${r.ivt?'1':'0'}&view=${r.view?'1':'0'}&type=${encodeURIComponent(r.codeType||'')}`;
+  const px=`https://demo.adriver.local/audit?pid=${r.id}&sup=${encodeURIComponent(supplier)}&ivt=${r.ivt?'1':'0'}&view=${r.view?'1':'0'}&type=${encodeURIComponent(r.codeType||'')}${target}${erir}${macroQuery}`;
   return px;
 }
 
@@ -144,20 +169,13 @@ function CodesPageContent(){
   },[visibleBatches]);
 
   function finalizeCodes(){
-    if (!contextMp) return;
-    const indexes = Array.from(
-      new Set(
-        visibleBatches.flatMap((batch) => batch.items.map((item) => item.sourceIndex)).filter((index) => Number.isInteger(index))
-      )
-    );
-    markMediaplanPositionsGenerated(contextMp, indexes);
-    setSuccessMessage(`Коды созданы для ${indexes.length} позиций медиаплана.`);
-    window.location.href = `/mediaplan/${contextMp}?flash=codes-created`;
+    const itemsCount = visibleBatches.reduce((sum, batch) => sum + batch.items.length, 0);
+    setSuccessMessage(`Заглушка: заказ кодов принят для ${itemsCount} сценариев. Переход в медиаплан отключен в прототипе.`);
   }
 
   return (
-    <div className={`${styles.theme} p-6 space-y-4`}>
-      <div className="flex items-center justify-between">
+    <div className={`${styles.theme} ${styles.adminPage}`}>
+      <div className={styles.adminTopbar}>
         <Tabs/>
         <div className={styles.toolbar}>
           <label className="flex items-center gap-2"><input type="checkbox" checked={selectAll} onChange={e=>onSelectAll(e.target.checked)}/> Все</label>
@@ -171,11 +189,7 @@ function CodesPageContent(){
             <ArrowLeft className="h-4 w-4" />
             <span>Назад</span>
           </a>
-          {contextMp ? (
-            <button type="button" onClick={finalizeCodes} className={`${styles.btn} ${styles.btnPrimary}`}>Заказать коды</button>
-          ) : (
-            <a href="/404" className={`${styles.btn} ${styles.btnPrimary}`}>Заказать коды</a>
-          )}
+          <button type="button" onClick={finalizeCodes} className={`${styles.btn} ${styles.btnPrimary}`}>Заказать коды</button>
         </div>
       </div>
 

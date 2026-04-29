@@ -135,6 +135,8 @@ export default function MediaplanCardPage() {
   }, [isHydrated, params]);
 
   const mediaplanId = params?.id || '';
+  const returnCampaignId = searchParams.get('returnCampaign') || '';
+  const returnCampaignHref = returnCampaignId ? `/campaigns/${encodeURIComponent(returnCampaignId)}` : '';
   const item = useMemo<MediaplanRecord | null>(() => {
     if (!isHydrated || !mediaplanId) return null;
     return getMediaplan(mediaplanId);
@@ -155,11 +157,11 @@ export default function MediaplanCardPage() {
             </p>
           </div>
           <Link
-            href="/mediaplan"
+            href={returnCampaignHref || "/mediaplan"}
             className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.8} />
-            К списку медиапланов
+            {returnCampaignHref ? "Вернуться в рекламную кампанию" : "К списку медиапланов"}
           </Link>
         </div>
       </section>
@@ -200,12 +202,20 @@ export default function MediaplanCardPage() {
       <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
-            href="/mediaplan"
+            href={returnCampaignHref || "/mediaplan"}
             className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.8} />
-            К списку медиапланов
+            {returnCampaignHref ? "Вернуться в рекламную кампанию" : "К списку медиапланов"}
           </Link>
+          {returnCampaignHref && (
+            <Link
+              href="/mediaplan"
+              className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm text-slate-500 hover:bg-slate-50"
+            >
+              К списку медиапланов
+            </Link>
+          )}
         </div>
       </section>
 

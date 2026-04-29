@@ -4,22 +4,28 @@ import { useRouter } from "next/navigation";
 import {
   loadUpload, saveUpload,
   loadMapping, saveMapping, applyMapping,
-  loadImport, saveImport,
+  saveImport,
   REQUIRED_KEYS, TARGET_KEYS, type Mapping,
-  type CampaignMeta
+  type CampaignMeta, type КлючСтолбца, type РазметкаRU
 } from "@/lib/mediaplan";
 
 export default function MappingPage() {
   const router = useRouter();
   const upload = loadUpload();
-  const [mapping, setMapping] = useState<Mapping>(() => loadMapping() || {});
+  const [mapping, setMapping] = useState<Mapping>(
+    () => loadMapping()?.столбцы || {}
+  );
   const [meta, setMeta] = useState<CampaignMeta>({ brand: "Бренд 1", campaign_name: "Новая кампания" });
+  const coverage = useMemo(() => {
+    const ok = REQUIRED_KEYS.filter(k => mapping[k as КлючСтолбца]);
+    return { ok: ok.length, total: REQUIRED_KEYS.length, ready: ok.length === REQUIRED_KEYS.length };
+  }, [mapping]);
 
   useEffect(() => {
     if (!upload) return;
     // Если в upload что-то поменялось — сохраним чтобы не потерять
     saveUpload(upload);
-  }, []);
+  }, [upload]);
 
   if (!upload) {
     return (
@@ -33,21 +39,31 @@ export default function MappingPage() {
     );
   }
 
+  const currentUpload = upload;
   const headers = upload.headers;
-  const coverage = useMemo(() => {
-    const ok = REQUIRED_KEYS.filter(k => mapping[k as any]);
-    return { ok: ok.length, total: REQUIRED_KEYS.length, ready: ok.length === REQUIRED_KEYS.length };
-  }, [mapping]);
 
-  function setMap(key: string, col: string) {
+  function setMap(key: КлючСтолбца, col: string) {
     setMapping(prev => ({ ...prev, [key]: col || undefined }));
   }
 
   function onApply() {
-    const imp = applyMapping(mapping, upload, meta);
-    saveMapping(mapping);
+    const imp = applyMapping(mapping, currentUpload, meta);
+    const mappingToSave: РазметкаRU = {
+      ячейки: {
+        "Рекламодатель": meta.advertiser || "",
+        "Название РК": meta.campaign_name || "",
+        "Бренд": meta.brand || "",
+        "Агентство": meta.agency || "",
+        "Продукт": meta.product || "",
+        "Старт РК": meta.date_start || "",
+        "Окончание РК": meta.date_end || "",
+        "Делегирование кампании": (meta.delegate_accounts || []).join(", "),
+      },
+      столбцы: mapping,
+    };
+    saveMapping(mappingToSave);
     saveImport(imp);
-    router.push("/mediaplan/preview");
+    router.push("/campaigns/new");
   }
 
   return (
@@ -89,19 +105,21 @@ export default function MappingPage() {
 
       <section className="grid gap-6 md:grid-cols-3">
         <div className="md:col-span-1 space-y-2">
-          {TARGET_KEYS.map(key => (
+          {TARGET_KEYS.map(key => {
+            const targetKey = key as КлючСтолбца;
+            return (
             <label key={key} className="flex items-center justify-between gap-3 text-sm">
               <span className={`text-gray-700 ${REQUIRED_KEYS.includes(key) ? "font-medium" : ""}`}>{key}</span>
               <select
                 className="min-w-[14rem] rounded-md border px-2 py-1"
-                value={(mapping as any)[key] || ""}
-                onChange={(e)=>setMap(key, e.target.value)}
+                value={mapping[targetKey] || ""}
+                onChange={(e)=>setMap(targetKey, e.target.value)}
               >
                 <option value="">— не использовать —</option>
                 {headers.map(h => <option key={h} value={h}>{h}</option>)}
               </select>
             </label>
-          ))}
+          )})}
           <div className="pt-2">
             <button
               disabled={!coverage.ready}
@@ -124,7 +142,7 @@ export default function MappingPage() {
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr>
-                {Object.entries(mapping).filter(([k,v])=>v).map(([k,v]) => (
+                {Object.entries(mapping).filter(([, v])=>v).map(([k]) => (
                   <th key={k} className="bg-gray-100 p-2 text-left">{k}</th>
                 ))}
               </tr>
@@ -132,7 +150,7 @@ export default function MappingPage() {
             <tbody>
               {upload.rowsRaw.slice(0, 20).map((row, i) => (
                 <tr key={i} className="odd:bg-white even:bg-gray-50">
-                  {Object.entries(mapping).filter(([k,v])=>v).map(([k,v]) => (
+                  {Object.entries(mapping).filter(([, v])=>v).map(([k,v]) => (
                     <td key={k} className="border-t p-2">{String(row[v as string] ?? "")}</td>
                   ))}
                 </tr>

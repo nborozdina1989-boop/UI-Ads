@@ -1,5 +1,4 @@
 'use client';
-'use client';
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -16,7 +15,7 @@ export default function MappingStubPage() {
   },[draftId]);
 
   const saveDraftAndOpenList = () => {
-    const d = saveQuickDraft();
+    saveQuickDraft();
     router.push("/mediaplan/drafts");
   };
 

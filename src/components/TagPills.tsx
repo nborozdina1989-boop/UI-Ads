@@ -1,5 +1,6 @@
 'use client';
 import React from 'react';
+import { Plus, X } from "lucide-react";
 
 type Props = {
   tags: string[];
@@ -15,10 +16,10 @@ export default function TagPills({ tags, onAdd, onRemove, onClickTag }: Props) {
         {onAdd && (
           <button
             onClick={onAdd}
-            className="rounded-full bg-white text-xs text-sky-600 ring-1 ring-sky-400 px-2 py-0.5 hover:bg-sky-50"
+            className="inline-flex items-center justify-center rounded-full bg-white text-[color:var(--adr-blue)] ring-1 ring-[color:var(--adr-light-blue)]/80 px-2 py-0.5 hover:bg-[color:var(--adr-light-blue)]/10"
             aria-label="Добавить тег"
           >
-            +
+            <Plus className="h-3 w-3" />
           </button>
         )}
       </div>
@@ -30,7 +31,7 @@ export default function TagPills({ tags, onAdd, onRemove, onClickTag }: Props) {
       {tags.map((t) => (
         <span
           key={t}
-          className="group inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-700 ring-1 ring-sky-200 hover:bg-sky-100"
+          className="group inline-flex items-center rounded-full bg-[color:var(--adr-light-blue)]/10 px-2 py-0.5 text-xs text-[color:var(--adr-blue)] ring-1 ring-[color:var(--adr-light-blue)]/40 hover:bg-[color:var(--adr-light-blue)]/20"
           title="Нажми для фильтра"
         >
           <button
@@ -45,7 +46,7 @@ export default function TagPills({ tags, onAdd, onRemove, onClickTag }: Props) {
               className="ml-1 leading-none opacity-0 group-hover:opacity-100"
               aria-label="Удалить тег"
             >
-              ×
+              <X className="h-3 w-3" />
             </button>
           )}
         </span>
@@ -53,10 +54,10 @@ export default function TagPills({ tags, onAdd, onRemove, onClickTag }: Props) {
       {onAdd && (
         <button
           onClick={onAdd}
-          className="rounded-full bg-white text-xs text-sky-600 ring-1 ring-sky-400 px-2 py-0.5 hover:bg-sky-50"
+          className="inline-flex items-center justify-center rounded-full bg-white text-[color:var(--adr-blue)] ring-1 ring-[color:var(--adr-light-blue)]/80 px-2 py-0.5 hover:bg-[color:var(--adr-light-blue)]/10"
           aria-label="Добавить тег"
         >
-          +
+          <Plus className="h-3 w-3" />
         </button>
       )}
     </div>

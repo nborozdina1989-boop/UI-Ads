@@ -29,14 +29,17 @@ export default function MultiSelect({
     if(!q) return options;
     return options.filter(o => (o.label+" "+(o.hint||"")).toLowerCase().includes(q));
   },[options, query]);
+  const filteredValues = useMemo(() => filtered.map((o) => o.value), [filtered]);
+  const filteredSet = useMemo(() => new Set(filteredValues), [filteredValues]);
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
 
-  const allVisibleSelected = filtered.every(o => selected.includes(o.value)) && filtered.length>0;
+  const allVisibleSelected = filtered.length > 0 && filtered.every((o) => selectedSet.has(o.value));
 
   const toggle = (val:string) => onChange(
-    selected.includes(val) ? selected.filter(v=>v!==val) : [...selected, val]
+    selectedSet.has(val) ? selected.filter(v=>v!==val) : [...selected, val]
   );
-  const selectVisible = () => onChange(Array.from(new Set([...selected, ...filtered.map(o=>o.value)])));
-  const clearVisible  = () => onChange(selected.filter(v => !filtered.map(o=>o.value).includes(v)));
+  const selectVisible = () => onChange(Array.from(new Set([...selected, ...filteredValues])));
+  const clearVisible  = () => onChange(selected.filter(v => !filteredSet.has(v)));
 
   return (
     <div ref={ref} className={`relative ${className}`}>
@@ -57,7 +60,7 @@ export default function MultiSelect({
           <div className="max-h-64 overflow-auto">
             {filtered.map(o=>(
               <label key={o.value} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50">
-                <input type="checkbox" checked={selected.includes(o.value)} onChange={()=>toggle(o.value)} />
+                <input type="checkbox" checked={selectedSet.has(o.value)} onChange={()=>toggle(o.value)} />
                 <span className="truncate">{o.label}</span>
                 {o.hint && <span className="ml-auto text-xs text-gray-500">{o.hint}</span>}
               </label>
@@ -65,7 +68,7 @@ export default function MultiSelect({
             {filtered.length===0 && <div className="px-3 py-2 text-sm text-gray-500">Ничего не найдено</div>}
           </div>
           <div className="flex items-center justify-between border-t p-2 text-xs">
-            <button onClick={selectVisible} className="rounded px-2 py-1 hover:bg-gray-50">Выбрать видимые</button>
+            <button disabled={allVisibleSelected || filteredValues.length===0} onClick={selectVisible} className="rounded px-2 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">Выбрать видимые</button>
             <button onClick={clearVisible}  className="rounded px-2 py-1 hover:bg-gray-50">Снять видимые</button>
           </div>
         </div>

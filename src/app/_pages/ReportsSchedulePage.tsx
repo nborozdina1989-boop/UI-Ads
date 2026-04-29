@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { listSchedules, saveSchedule, deleteSchedule, type Schedule } from "@/lib/reports";
 
 export default function ReportsSchedulePage(){
@@ -31,7 +32,10 @@ export default function ReportsSchedulePage(){
     <div className="mx-auto max-w-7xl p-6">
       <div className="mb-4 flex items-center justify-between">
         <div className="text-2xl font-bold">Расписание</div>
-        <Link href="/builder" className="rounded-full bg-white px-4 py-2 text-sm text-sky-700 ring-1 ring-sky-600 hover:bg-sky-50">← К конструктору</Link>
+        <Link href="/builder" className="inline-flex items-center gap-1 rounded-full bg-white px-4 py-2 text-sm text-sky-700 ring-1 ring-sky-600 hover:bg-sky-50">
+          <ArrowLeft className="h-4 w-4" />
+          <span>К конструктору</span>
+        </Link>
       </div>
 
       <div className="mb-4 grid gap-3 md:grid-cols-3">

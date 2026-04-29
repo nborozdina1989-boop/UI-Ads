@@ -1,7 +1,7 @@
 'use client';
-'use client';
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { loadImport } from "@/lib/mediaplan";
 
 /** Детерминированные ID без бэка */
@@ -29,7 +29,7 @@ export default function CampaignCreateHub() {
   const pids         = useMemo(()=> genPids(imp?.rows?.length || 3, campaignName), [imp, campaignName]);
   const names        = useMemo(()=> {
     const rows = imp?.rows || [];
-    if (rows.length) return rows.map((r:any, i:number)=> r.platform_name || r.supplier || `Сценарий ${i+1}`);
+    if (rows.length) return rows.map((r, i:number)=> r.platform_name || r.supplier || `Сценарий ${i+1}`);
     return ["Yandex", "IVI", "Hyper"];
   }, [imp]);
 
@@ -110,7 +110,10 @@ export default function CampaignCreateHub() {
       </div>
 
       <div className="mt-8 text-center">
-        <Link href="/mediaplan/upload" className="text-sm text-sky-700 hover:underline">← Вернуться к загрузке медиаплана</Link>
+        <Link href="/mediaplan/upload" className="inline-flex items-center gap-1 text-sm text-sky-700 hover:underline">
+          <ArrowLeft className="h-4 w-4" />
+          <span>Вернуться к загрузке медиаплана</span>
+        </Link>
       </div>
     </div>
   );

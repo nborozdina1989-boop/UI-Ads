@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AdRiver оперативный дашборд (frontend-only прототип)
 
-## Getting Started
+Прототип сделан без бэка: все данные лежат на фронте, агрегируются локальным query engine, UI реагирует на единые глобальные фильтры.
 
-First, run the development server:
+## Запуск
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Открыть:
+- `http://localhost:3000/dashboard/overview`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Что реализовано
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- IA в стиле BI: sidebar + topbar фильтров + страницы:
+  - Полностью: `Overview`, `Performance`, `Verification`
+  - Каркас: `Video`, `Conversions`, `Audience`
+  - Минимально: `Exports` (CSV + история экспортов)
+- Глобальные фильтры (единые для всех страниц):
+  - date range (`today/7d/30d/custom`) + compare toggle
+  - grain `day/hour` (hour только при периоде <= 7 дней)
+  - campaign / placement / creative / domain / geo / deviceType / OS
+  - attribution mode `post-view/post-click`
+- KPI, графики (`Recharts`), таблицы (`TanStack Table` в Performance)
+- Exclusions доменов (localStorage), применяются на уровне query engine
+- RBAC (упрощенно):
+  - `agency`: полный доступ
+  - `advertiser`: без `Exports`, Verification без управления exclusions
 
-## Learn More
+## Архитектура
 
-To learn more about Next.js, take a look at the following resources:
+### 1) Типы контрактов
+- `src/query/types.ts`
+- Содержит `Metric`, `Dimension`, `Filters`, `Query`, `QueryResponse`, role/section/filter state.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 2) Мок-датасет
+- `src/data/mockDataset.ts`
+- Генерирует 90 дней данных с реалистичным распределением:
+  - 8 кампаний
+  - 20+ размещений
+  - 50+ креативов
+  - 50+ доменов
+  - 30+ geo
+  - несколько типов устройств и ОС
+- Там же экспортируется `CATALOG` для UI-фильтров.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 3) Query engine
+- `src/query/engine.ts`
+- `query(q)` выполняет:
+  - фильтрацию (включая `exclusionsDomains`)
+  - groupBy по dimensions
+  - агрегации сумм и derived-метрики
+  - сортировку, limit/offset
+- Формулы:
+  - `ctr = clicks / impressions`
+  - `frequency = impressions / reach`
+  - `vcr100 = vastComplete / vastStart`
+  - `ivtRate`, `brandSafetyRate`: взвешенное среднее по `impressions`
 
-## Deploy on Vercel
+### 4) Селекторы
+- `src/query/selectors.ts`
+- Готовые запросы для виджетов Overview/Performance/Verification/…
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 5) Состояние фильтров
+- `src/query/filtersStore.ts` (Zustand)
+- Хранит глобальные фильтры, role, exclusions, синхронизацию с URL query string.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 6) Имитация запросов
+- `src/query/runQueryAsync.ts`
+- Добавляет задержку 150–300ms для skeleton UX.
+
+### 7) Страница дашборда
+- `src/app/_pages/DashboardPage.tsx`
+- Основной shell, sidebar/topbar, рендер страниц по роуту `/dashboard/<section>`.
+
+## Экспорт CSV
+
+- В `Overview` есть кнопка `Экспорт CSV` для таблицы `Топ домены`.
+- В `Exports` есть повторный экспорт + история экспортов.
+- История хранится в localStorage: `adriver/dashboard/export-history`.
+
+## Где менять мок-данные
+
+- В `src/data/mockDataset.ts`:
+  - списки кампаний/доменов/geo
+  - правила генерации метрик и распределений
+
+## Как подключить реальный API позже
+
+Точка замены одна: слой query.
+
+1. Оставить текущие UI-виджеты и фильтры без изменений.
+2. В `src/query/selectors.ts` заменить вызовы `query(...)` на `fetch(...)` к API.
+3. Сохранить контракт ответа (`rows/meta`) или добавить адаптер ответа API -> UI-формат.
+
+Так UI и бизнес-логика виджетов останутся стабильными, меняется только data provider слой.

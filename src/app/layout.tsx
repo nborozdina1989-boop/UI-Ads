@@ -1,4 +1,5 @@
 import "./globals.css";
+import PrototypeUserGuide from "@/components/PrototypeUserGuide";
 
 export const metadata = {
   title: "AdRiver прототип",
@@ -8,7 +9,10 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ru">
-      <body>{children}</body>
+      <body>
+        {children}
+        <PrototypeUserGuide />
+      </body>
     </html>
   );
 }

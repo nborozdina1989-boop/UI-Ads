@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { type FocusEvent, type MouseEvent, Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowRight, FileSpreadsheet, Search, Trash2 } from 'lucide-react';
 import { deleteMediaplan, ensureMockMediaplans, listMediaplans, type MediaplanRecord, type MediaplanStatus } from '@/lib/mediaplan';
@@ -41,6 +41,7 @@ function MediaplanListPageContent() {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'all' | MediaplanStatus>('all');
   const [sort, setSort] = useState<SortMode>('uploaded_desc');
+  const [deleteTooltip, setDeleteTooltip] = useState<{ x: number; y: number } | null>(null);
   const createdId = searchParams.get('created') || '';
   const flash = searchParams.get('flash') || '';
 
@@ -82,7 +83,17 @@ function MediaplanListPageContent() {
 
   function handleDeleteMediaplan(id: string) {
     deleteMediaplan(id);
+    setDeleteTooltip(null);
     setItems(listMediaplans());
+  }
+
+  function showDeleteTooltip(event: MouseEvent<HTMLElement> | FocusEvent<HTMLElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const tooltipWidth = 260;
+    setDeleteTooltip({
+      x: Math.max(12, Math.min(rect.right - tooltipWidth, window.innerWidth - tooltipWidth - 12)),
+      y: Math.max(12, rect.top - 78),
+    });
   }
 
   return (
@@ -95,7 +106,7 @@ function MediaplanListPageContent() {
 
       <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[260px] flex-1">
+          <div className="relative w-full min-w-0 flex-1 sm:min-w-[260px]">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={query}
@@ -156,7 +167,80 @@ function MediaplanListPageContent() {
           </div>
         </div>
 
-        <div className="overflow-auto rounded-2xl border border-slate-200">
+        <div className="space-y-3 md:hidden">
+          {filtered.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+              Медиапланов пока нет. Загрузите новый файл или создайте медиаплан с нуля.
+            </div>
+          ) : (
+            filtered.map((item) => {
+              const descriptionContainsAdvertiser =
+                Boolean(item.advertiser) &&
+                (item.description || "").toLowerCase().includes(String(item.advertiser).toLowerCase());
+              return (
+                <article
+                  key={item.id}
+                  className={`rounded-2xl border border-slate-200 bg-white p-4 ${
+                    item.id === createdId ? 'ring-2 ring-emerald-300' : ''
+                  }`}
+                >
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-mono text-xs text-slate-500">{item.id}</div>
+                      <Link
+                        href={`/mediaplan/${item.id}`}
+                        className="mt-1 block truncate text-sm font-semibold text-slate-950 hover:text-sky-700"
+                      >
+                        {item.title}
+                      </Link>
+                    </div>
+                    <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusTone(item.status)}`}>
+                      {item.status}
+                    </span>
+                  </div>
+                  <p className="line-clamp-2 text-xs leading-5 text-slate-500">{item.description || 'Описание не задано'}</p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                    {item.advertiser && !descriptionContainsAdvertiser ? (
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">Рекламодатель: {item.advertiser}</span>
+                    ) : null}
+                    {typeof item.rowsCount === 'number' ? <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">Строк: {item.rowsCount}</span> : null}
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">Источник: {item.source === 'upload' ? 'Excel' : 'Создан вручную'}</span>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">{formatDate(item.uploadedAt)}</span>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between gap-2">
+                    {item.status === 'кампания создана' ? (
+                      <Link
+                        href={`/generation?mp=${item.id}`}
+                        className="inline-flex min-h-9 flex-1 items-center justify-center gap-1 rounded-full bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-700"
+                      >
+                        Перейти к генерации кодов
+                        <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.8} />
+                      </Link>
+                    ) : (
+                      <span className="inline-flex min-h-9 flex-1 items-center justify-center rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-400">
+                        Перейти к генерации кодов
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteMediaplan(item.id)}
+                      onMouseEnter={showDeleteTooltip}
+                      onMouseLeave={() => setDeleteTooltip(null)}
+                      onFocus={showDeleteTooltip}
+                      onBlur={() => setDeleteTooltip(null)}
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
+                      aria-label={`Удалить медиаплан ${item.title}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} />
+                    </button>
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </div>
+
+        <div className="hidden overflow-auto rounded-2xl border border-slate-200 md:block">
           <table className="w-full min-w-[980px] border-collapse text-sm">
             <thead>
               <tr>
@@ -224,19 +308,18 @@ function MediaplanListPageContent() {
                               Перейти к генерации кодов
                             </span>
                           )}
-                          <div className="group relative">
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteMediaplan(item.id)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
-                              aria-label={`Удалить медиаплан ${item.title}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} />
-                            </button>
-                            <span className="pointer-events-none absolute bottom-full right-0 z-20 mb-2 hidden w-[260px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] leading-5 text-slate-600 shadow-lg group-hover:block group-focus-within:block">
-                              Техническая кнопка для админа. Не отражает прототипируемый пользовательский функционал.
-                            </span>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteMediaplan(item.id)}
+                            onMouseEnter={showDeleteTooltip}
+                            onMouseLeave={() => setDeleteTooltip(null)}
+                            onFocus={showDeleteTooltip}
+                            onBlur={() => setDeleteTooltip(null)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
+                            aria-label={`Удалить медиаплан ${item.title}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -247,6 +330,14 @@ function MediaplanListPageContent() {
           </table>
         </div>
       </section>
+      {deleteTooltip && (
+        <div
+          className="pointer-events-none fixed z-[1000] w-[260px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] leading-5 text-slate-600 shadow-[0_18px_50px_rgba(15,23,42,0.18)]"
+          style={{ left: deleteTooltip.x, top: deleteTooltip.y }}
+        >
+          Техническая кнопка для админа. Не отражает прототипируемый пользовательский функционал.
+        </div>
+      )}
     </div>
   );
 }

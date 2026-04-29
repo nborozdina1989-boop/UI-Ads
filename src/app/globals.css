@@ -77,15 +77,19 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
-  --adr-blue: #0078D7;
-  --adr-light-blue: #78D2F5;
-  --adr-dark-blue: #002E6D;
-  --adr-green: #95D600;
-  --adr-logo: #005AB9;
-  --adr-surface: #F5F8FB;
-  --adr-border: rgba(0, 120, 215, 0.15);
-  --adr-text: #0F172A;
-  --adr-text-muted: rgba(15, 23, 42, 0.6);
+  /* AdRiver guideline (2014): PF Centro Sans Pro + core RGB palette */
+  --adr-font-sans: "PF Centro Sans Pro", "PFCentroSansPro", "Segoe UI", "Arial", sans-serif;
+  --adr-blue: #1d70b7;
+  --adr-light-blue: #35a8e0;
+  --adr-dark-blue: #2d2e82;
+  --adr-green: #93c01f;
+  --adr-logo: #005ab9;
+  --adr-orange: #f29100;
+  --adr-danger: #e20613;
+  --adr-surface: #f5f5f5;
+  --adr-border: #d9dde3;
+  --adr-text: #1d1d1b;
+  --adr-text-muted: #6f7380;
 }
 
 .dark {
@@ -121,13 +125,15 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
 
-  --adr-blue: #0078D7;
-  --adr-light-blue: #78D2F5;
-  --adr-dark-blue: #002E6D;
-  --adr-green: #95D600;
-  --adr-logo: #005AB9;
+  --adr-blue: #1d70b7;
+  --adr-light-blue: #35a8e0;
+  --adr-dark-blue: #2d2e82;
+  --adr-green: #93c01f;
+  --adr-logo: #005ab9;
+  --adr-orange: #f29100;
+  --adr-danger: #e20613;
   --adr-surface: #0F172A;
-  --adr-border: rgba(120, 210, 245, 0.12);
+  --adr-border: rgba(53, 168, 224, 0.2);
   --adr-text: #FFFFFF;
   --adr-text-muted: rgba(255, 255, 255, 0.6);
 }
@@ -138,5 +144,215 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--adr-font-sans);
+    color: var(--adr-text);
+  }
+}
+
+@layer utilities {
+  .text-sky-600,
+  .text-sky-700 {
+    color: var(--adr-blue) !important;
+  }
+
+  .text-sky-400,
+  .text-sky-500 {
+    color: var(--adr-light-blue) !important;
+  }
+
+  .text-sky-800,
+  .text-sky-900 {
+    color: var(--adr-dark-blue) !important;
+  }
+
+  .bg-sky-50,
+  .bg-sky-100 {
+    background-color: color-mix(in srgb, var(--adr-light-blue) 12%, white) !important;
+  }
+
+  .bg-sky-200 {
+    background-color: color-mix(in srgb, var(--adr-light-blue) 20%, white) !important;
+  }
+
+  .bg-sky-300 {
+    background-color: color-mix(in srgb, var(--adr-light-blue) 28%, white) !important;
+  }
+
+  .bg-sky-600 {
+    background-color: var(--adr-blue) !important;
+  }
+
+  .bg-sky-700 {
+    background-color: var(--adr-dark-blue) !important;
+  }
+
+  .hover\:bg-sky-50:hover {
+    background-color: color-mix(in srgb, var(--adr-light-blue) 16%, white) !important;
+  }
+
+  .hover\:bg-sky-100:hover {
+    background-color: color-mix(in srgb, var(--adr-light-blue) 22%, white) !important;
+  }
+
+  .hover\:bg-sky-700:hover {
+    background-color: var(--adr-dark-blue) !important;
+  }
+
+  .hover\:text-sky-700:hover {
+    color: var(--adr-blue) !important;
+  }
+
+  .border-sky-100 {
+    border-color: color-mix(in srgb, var(--adr-light-blue) 30%, white) !important;
+  }
+
+  .border-sky-200,
+  .border-sky-300 {
+    border-color: color-mix(in srgb, var(--adr-light-blue) 45%, white) !important;
+  }
+
+  .border-sky-400 {
+    border-color: var(--adr-light-blue) !important;
+  }
+
+  .hover\:border-sky-200:hover,
+  .hover\:border-sky-300:hover {
+    border-color: color-mix(in srgb, var(--adr-light-blue) 45%, white) !important;
+  }
+
+  .border-sky-500,
+  .border-sky-600,
+  .ring-sky-600 {
+    border-color: var(--adr-blue) !important;
+    --tw-ring-color: var(--adr-blue) !important;
+  }
+
+  .ring-sky-400 {
+    --tw-ring-color: var(--adr-light-blue) !important;
+  }
+
+  .ring-sky-200,
+  .ring-sky-300 {
+    --tw-ring-color: color-mix(in srgb, var(--adr-light-blue) 45%, white) !important;
+  }
+
+  .text-blue-500,
+  .text-blue-600,
+  .text-blue-700 {
+    color: var(--adr-blue) !important;
+  }
+
+  .bg-blue-500,
+  .bg-blue-600 {
+    background-color: var(--adr-blue) !important;
+  }
+
+  .bg-blue-700 {
+    background-color: var(--adr-dark-blue) !important;
+  }
+
+  .border-blue-500,
+  .border-blue-600,
+  .ring-blue-500,
+  .ring-blue-600 {
+    border-color: var(--adr-blue) !important;
+    --tw-ring-color: var(--adr-blue) !important;
+  }
+
+  .hover\:border-blue-500:hover,
+  .hover\:border-blue-600:hover {
+    border-color: var(--adr-blue) !important;
+  }
+
+  .text-slate-900,
+  .text-slate-800,
+  .text-slate-700,
+  .text-gray-900,
+  .text-gray-800,
+  .text-gray-700 {
+    color: var(--adr-text) !important;
+  }
+
+  .text-slate-600,
+  .text-slate-500,
+  .text-slate-400,
+  .text-gray-600,
+  .text-gray-500,
+  .text-gray-400 {
+    color: var(--adr-text-muted) !important;
+  }
+
+  .bg-slate-50,
+  .bg-slate-100,
+  .bg-gray-50,
+  .bg-gray-100 {
+    background-color: var(--adr-surface) !important;
+  }
+
+  .bg-gray-200 {
+    background-color: color-mix(in srgb, var(--adr-border) 75%, white) !important;
+  }
+
+  .border-slate-100,
+  .border-slate-200,
+  .border-slate-300,
+  .border-gray-200,
+  .border-gray-300 {
+    border-color: var(--adr-border) !important;
+  }
+
+  .ring-slate-200,
+  .ring-slate-300,
+  .ring-gray-300 {
+    --tw-ring-color: var(--adr-border) !important;
+  }
+
+  .hover\:bg-slate-50:hover,
+  .hover\:bg-gray-50:hover {
+    background-color: color-mix(in srgb, var(--adr-light-blue) 10%, white) !important;
+  }
+
+  .text-emerald-600,
+  .text-emerald-700 {
+    color: var(--adr-green) !important;
+  }
+
+  .bg-emerald-50 {
+    background-color: color-mix(in srgb, var(--adr-green) 12%, white) !important;
+  }
+
+  .bg-emerald-600 {
+    background-color: color-mix(in srgb, var(--adr-green) 88%, black) !important;
+  }
+
+  .border-emerald-200,
+  .ring-emerald-600 {
+    border-color: color-mix(in srgb, var(--adr-green) 45%, white) !important;
+    --tw-ring-color: color-mix(in srgb, var(--adr-green) 60%, white) !important;
+  }
+
+  .text-amber-600,
+  .text-amber-700 {
+    color: var(--adr-orange) !important;
+  }
+
+  .bg-amber-50,
+  .bg-amber-100 {
+    background-color: color-mix(in srgb, var(--adr-orange) 15%, white) !important;
+  }
+
+  .border-amber-200,
+  .ring-amber-600 {
+    border-color: color-mix(in srgb, var(--adr-orange) 45%, white) !important;
+    --tw-ring-color: color-mix(in srgb, var(--adr-orange) 65%, white) !important;
+  }
+
+  .text-rose-600,
+  .text-red-600 {
+    color: var(--adr-danger) !important;
+  }
+
+  .bg-white {
+    background-color: white !important;
   }
 }

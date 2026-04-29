@@ -245,8 +245,8 @@ export default function BuilderPage(){
             <tbody>
               {preview.map((r,i)=>(
                 <tr key={i} className="odd:bg-white even:bg-gray-50">
-                  {dims.map(h=> <td key={h} className="border-t p-2">{(r as any)[h]}</td>)}
-                  {metrics.map(h=> <td key={h} className="border-t p-2">{(r as any)[h]}</td>)}
+                  {dims.map(h=> <td key={h} className="border-t p-2">{r[h]}</td>)}
+                  {metrics.map(h=> <td key={h} className="border-t p-2">{r[h]}</td>)}
                 </tr>
               ))}
             </tbody>

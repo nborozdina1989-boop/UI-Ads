@@ -2,6 +2,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Download, RotateCcw, Star, X } from "lucide-react";
 import { listCampaigns, exportExcel, type Campaign } from "@/lib/campaigns";
 import { getArchivedIds, getArchivedAt, restoreCampaigns, getFavCampaignIds, toggleFavCampaign, isFavCampaign } from "@/lib/archfav";
 
@@ -12,16 +13,41 @@ function Tabs() {
       className={`rounded-full px-3 py-1.5 text-sm ${path===href? "bg-sky-600 text-white":"bg-white text-sky-700 ring-1 ring-sky-600 hover:bg-sky-50"}`}>{label}</Link>
   );
   return (
-    <div className="mb-4 flex flex-wrap gap-2">
-      <Tab href="/campaigns" label="РК"/>
-      <Tab href="/campaigns/groups" label="Группы"/>
-      <Tab href="/campaigns/archive" label="Архив"/>
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap gap-2">
+        <Tab href="/campaigns" label="РК"/>
+        <Tab href="/campaigns/groups" label="Группы"/>
+        <Tab href="/campaigns/archive" label="Архив"/>
+      </div>
+      <Link
+        href="/campaigns/tracker-sites"
+        className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+      >
+        Трекерные сайты
+      </Link>
     </div>
   );
 }
 
 type GroupMode = "none"|"brand"|"adv"|"tree";
 type SortMode = "arch_desc"|"arch_asc"|"name_asc"|"name_desc";
+type FlatBucket = { __flat: Campaign[] };
+type FlatGrouped = Record<string, FlatBucket>;
+type TreeGrouped = Record<string, Record<string, FlatBucket>>;
+
+function isFlatBucket(bucket: FlatBucket | Record<string, FlatBucket>): bucket is FlatBucket {
+  return "__flat" in bucket;
+}
+
+function countBucket(bucket: FlatBucket | Record<string, FlatBucket>) {
+  if (isFlatBucket(bucket)) return bucket.__flat.length;
+  return Object.values(bucket).reduce((n, v) => n + v.__flat.length, 0);
+}
+
+function getTreeEntries(bucket: FlatBucket | Record<string, FlatBucket>) {
+  if (isFlatBucket(bucket)) return [] as [string, FlatBucket][];
+  return Object.entries(bucket);
+}
 
 export default function ArchivePage(){
   const [mounted, setMounted] = useState(false);
@@ -60,19 +86,19 @@ export default function ArchivePage(){
     }
   }, [filtered, sort]);
 
-  const grouped = useMemo(()=>{
-    if (groupMode==="none") return { "Архив": { "__flat": sorted } } as any;
+  const grouped = useMemo<FlatGrouped | TreeGrouped>(()=>{
+    if (groupMode==="none") return { "Архив": { "__flat": sorted } };
     if (groupMode==="brand"){
-      const m:any = {};
+      const m: FlatGrouped = {};
       sorted.forEach(c=>{ const k = c.brand || "Без бренда"; (m[k] ||= { "__flat": [] }).__flat.push(c); });
       return m;
     }
     if (groupMode==="adv"){
-      const m:any = {};
+      const m: FlatGrouped = {};
       sorted.forEach(c=>{ const k = c.advertiser || "Без рекламодателя"; (m[k] ||= { "__flat": [] }).__flat.push(c); });
       return m;
     }
-    const m:any = {};
+    const m: TreeGrouped = {};
     sorted.forEach(c=>{
       const a = c.advertiser || "Без рекламодателя";
       const b = c.brand || "Без бренда";
@@ -82,7 +108,7 @@ export default function ArchivePage(){
   }, [sorted, groupMode]);
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const toggleSel = (id:number)=> setSelected(prev=>{ const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); return n; });
+  const toggleSel = (id:number)=> setSelected(prev=>{ const n=new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const clearSel = ()=> setSelected(new Set());
   const ids = Array.from(selected);
 
@@ -118,7 +144,7 @@ export default function ArchivePage(){
               Показать
               <select value={favOnly ? "fav":"all"} onChange={e=>setFavOnly(e.target.value==="fav")} className="rounded-md border px-2 py-1.5 text-sm">
                 <option value="all">Все</option>
-                <option value="fav">Избранные ⭐</option>
+                <option value="fav">Избранные</option>
               </select>
             </label>
 
@@ -136,20 +162,20 @@ export default function ArchivePage(){
           {selected.size>0 && (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 ring-1 ring-sky-200">
               <div className="text-sm text-sky-900">Выбрано: <b>{selected.size}</b></div>
-              <button onClick={exportAction} className="rounded-full bg-white px-3 py-1 text-xs text-sky-700 ring-1 ring-sky-600" title="Экспорт Excel">⬇️</button>
-              <button onClick={restoreAction} className="rounded-full bg-white px-3 py-1 text-xs text-emerald-700 ring-1 ring-emerald-600" title="Разархивировать">♻️</button>
-              <button onClick={()=>clearSel()} className="ml-auto rounded-full bg-white px-3 py-1 text-xs text-gray-700 ring-1 ring-gray-300" title="Сбросить">✖️</button>
+              <button onClick={exportAction} className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-sky-700 ring-1 ring-sky-600" title="Экспорт Excel"><Download className="h-4 w-4" /></button>
+              <button onClick={restoreAction} className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-emerald-700 ring-1 ring-emerald-600" title="Разархивировать"><RotateCcw className="h-4 w-4" /></button>
+              <button onClick={()=>clearSel()} className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-700 ring-1 ring-gray-300" title="Сбросить"><X className="h-4 w-4" /></button>
             </div>
           )}
 
           <div className="space-y-6">
-            {Object.entries(grouped).map(([label, bucket]:any)=>(
+            {Object.entries(grouped).map(([label, bucket])=>(
               <section key={label} className="rounded-2xl border bg-white p-4 shadow-sm">
                 {Object.keys(grouped).length>1 && (
                   <div className="mb-2 flex items-center justify-between">
                     <div className="text-left text-xl font-semibold">
                       {label} <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                        {bucket.__flat ? bucket.__flat.length : Object.values<any>(bucket).reduce((n:any,v:any)=>n+(v.__flat?.length||0),0)}
+                        {countBucket(bucket)}
                       </span>
                     </div>
                   </div>
@@ -167,43 +193,51 @@ export default function ArchivePage(){
                     </thead>
                     <tbody>
                       { (groupMode!=="tree")
-                        ? (bucket as any).__flat?.map((c:Campaign)=> (
+                        ? ((isFlatBucket(bucket) ? bucket.__flat : [])).map((c:Campaign)=> (
                             <tr key={c.id} className="odd:bg-white even:bg-gray-50 hover:bg-sky-50">
                               <td className="border-t p-2"><input type="checkbox" checked={(new Set(selected)).has(c.id)} onChange={()=>toggleSel(c.id)}/></td>
-                              <td className="border-t p-2"><button onClick={()=>{ toggleFavCampaign(c.id); location.reload(); }} className="text-lg">{isFavCampaign(c.id) ? "⭐":"☆"}</button></td>
+                              <td className="border-t p-2">
+                                <button onClick={()=>{ toggleFavCampaign(c.id); location.reload(); }} className="inline-flex rounded-full p-1 hover:bg-sky-50">
+                                  <Star className={`h-4 w-4 ${isFavCampaign(c.id) ? "fill-[color:var(--adr-green)] text-[color:var(--adr-green)]" : "text-[color:var(--adr-text-muted)]"}`} />
+                                </button>
+                              </td>
                               <td className="border-t p-2 font-mono text-sky-700 underline-offset-2 hover:underline"><Link href={`/campaigns/${c.id}`}>{c.id}</Link></td>
                               <td className="border-t p-2">
                                 <div className="text-sky-700 underline-offset-2 hover:underline"><Link href={`/campaigns/${c.id}`}>{c.name}</Link></div>
                                 <div className="text-xs text-gray-500">Архивирована: {new Date(getArchivedAt(c.id)||0).toLocaleDateString("ru-RU")}</div>
                               </td>
                               <td className="border-t p-2 text-right">
-                                <button onClick={()=>exportExcel([c])} title="Экспорт Excel" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">⬇️</button>
-                                <button onClick={()=>{ restoreCampaigns([c.id]); location.reload(); }} title="Разархивировать" className="rounded-full bg-white px-2 py-1 text-xs text-emerald-700 ring-1 ring-emerald-600">♻️</button>
+                                <button onClick={()=>exportExcel([c])} title="Экспорт Excel" className="mr-1 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-sky-700 ring-1 ring-sky-600"><Download className="h-4 w-4" /></button>
+                                <button onClick={()=>{ restoreCampaigns([c.id]); location.reload(); }} title="Разархивировать" className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-emerald-700 ring-1 ring-emerald-600"><RotateCcw className="h-4 w-4" /></button>
                               </td>
                             </tr>
                           ))
-                        : Object.entries(bucket as any).map(([brand, bkt]:any)=>(
+                        : getTreeEntries(bucket).map(([brand, bkt])=>(
                             <React.Fragment key={String(brand)}>
                               <tr><td colSpan={5} className="bg-gray-50 p-2 font-semibold">{brand}</td></tr>
                               {bkt.__flat.map((c:Campaign)=> (
                                 <tr key={c.id} className="odd:bg-white even:bg-gray-50 hover:bg-sky-50">
                                   <td className="border-t p-2"><input type="checkbox" checked={(new Set(selected)).has(c.id)} onChange={()=>toggleSel(c.id)}/></td>
-                                  <td className="border-t p-2"><button onClick={()=>{ toggleFavCampaign(c.id); location.reload(); }} className="text-lg">{isFavCampaign(c.id) ? "⭐":"☆"}</button></td>
+                                  <td className="border-t p-2">
+                                    <button onClick={()=>{ toggleFavCampaign(c.id); location.reload(); }} className="inline-flex rounded-full p-1 hover:bg-sky-50">
+                                      <Star className={`h-4 w-4 ${isFavCampaign(c.id) ? "fill-[color:var(--adr-green)] text-[color:var(--adr-green)]" : "text-[color:var(--adr-text-muted)]"}`} />
+                                    </button>
+                                  </td>
                                   <td className="border-t p-2 font-mono text-sky-700 underline-offset-2 hover:underline"><Link href={`/campaigns/${c.id}`}>{c.id}</Link></td>
                                   <td className="border-t p-2">
                                     <div className="text-sky-700 underline-offset-2 hover:underline"><Link href={`/campaigns/${c.id}`}>{c.name}</Link></div>
                                     <div className="text-xs text-gray-500">Архивирована: {new Date(getArchivedAt(c.id)||0).toLocaleDateString("ru-RU")}</div>
                                   </td>
                                   <td className="border-t p-2 text-right">
-                                    <button onClick={()=>exportExcel([c])} title="Экспорт Excel" className="mr-1 rounded-full bg-white px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-600">⬇️</button>
-                                    <button onClick={()=>{ restoreCampaigns([c.id]); location.reload(); }} title="Разархивировать" className="rounded-full bg-white px-2 py-1 text-xs text-emerald-700 ring-1 ring-emerald-600">♻️</button>
+                                    <button onClick={()=>exportExcel([c])} title="Экспорт Excel" className="mr-1 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-sky-700 ring-1 ring-sky-600"><Download className="h-4 w-4" /></button>
+                                    <button onClick={()=>{ restoreCampaigns([c.id]); location.reload(); }} title="Разархивировать" className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-emerald-700 ring-1 ring-emerald-600"><RotateCcw className="h-4 w-4" /></button>
                                   </td>
                                 </tr>
                               ))}
                             </React.Fragment>
                           ))
                       }
-                      {((bucket as any).__flat?.length || 0)===0 && groupMode!=="tree" && (<tr><td colSpan={5} className="py-8 text-center text-gray-500">Ничего не найдено</td></tr>)}
+                      {("__flat" in bucket ? bucket.__flat.length : 0)===0 && groupMode!=="tree" && (<tr><td colSpan={5} className="py-8 text-center text-gray-500">Ничего не найдено</td></tr>)}
                     </tbody>
                   </table>
                 </div>

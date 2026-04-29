@@ -39,10 +39,10 @@ export function deleteSchedule(id:string){ write(K_SCHEDULE, listSchedules().fil
 export const DEFAULT_METRICS = ["Показы","Клики","CTR","Затраты","CPM","CPC","Бюджет"];
 
 // лёгкая синтетическая генерация данных под предпросмотр
-export function mockPreview(rows:number, dims:string[], metrics:string[]){
-  const R:any[] = [];
+export function mockPreview(rows:number, dims:string[], metrics:string[]): Record<string, string | number>[]{
+  const R: Record<string, string | number>[] = [];
   for(let i=0;i<Math.max(rows,5);i++){
-    const line:any = {};
+    const line: Record<string, string | number> = {};
     dims.forEach((d,idx)=> line[d] = `${d} ${idx+1}-${(i%3)+1}`);
     metrics.forEach(m=>{
       if(m==="CTR") line[m] = ( ( (i+1)*7 % 120 ) / 10 ).toFixed(2) + "%";

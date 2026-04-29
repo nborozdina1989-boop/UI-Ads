@@ -197,6 +197,8 @@ export type MediaplanRecord = {
   rowsCount?: number;
   scenarioNames?: string[];
   generatedPositionIndexes?: number[];
+  campaignDelegateAccounts?: string[];
+  scenarioDelegations?: Record<string, string[]>;
   draftId?: string;
   importFileName?: string;
   upload?: MediaplanUpload | null;
@@ -654,14 +656,16 @@ export function applyMappingRU(
   } else {
     for (const raw of upload.rowsRaw) {
       const r: Partial<PlacementRow> = {};
+      let hasData = false;
       for (const [ruKey, colName] of Object.entries(mapping.столбцы) as [КлючСтолбца,string][]) {
         if (!colName) continue;
         const val = raw[colName];
+        if (val != null && String(val).trim() !== "") hasData = true;
 
         const canon = RU2CANON_COL[ruKey];
         assignPlacementValue(r, canon, val, meta);
       }
-      rows.push(r as PlacementRow);
+      if (hasData) rows.push(r as PlacementRow);
     }
   }
 
@@ -897,6 +901,8 @@ export function upsertUploadMediaplan(params: {
     rowsCount: params.imp?.rows.length ?? params.upload.rowsRaw.length,
     scenarioNames: deriveScenarioNamesFromImport(params.imp),
     generatedPositionIndexes: [],
+    campaignDelegateAccounts: params.imp?.meta.delegate_accounts || [],
+    scenarioDelegations: {},
     draftId: params.draftId,
     upload: params.upload,
     mapping: params.mapping || null,
@@ -912,6 +918,7 @@ export function upsertCreatedMediaplan(params: {
   agency?: string;
   rowsCount?: number;
   scenarioNames?: string[];
+  delegateAccounts?: string[];
   status?: MediaplanStatus;
 }): MediaplanRecord {
   const recordId = params.id || nextMediaplanId();
@@ -928,6 +935,8 @@ export function upsertCreatedMediaplan(params: {
     rowsCount: scenarioNames.length || params.rowsCount || 0,
     scenarioNames,
     generatedPositionIndexes: [],
+    campaignDelegateAccounts: params.delegateAccounts || [],
+    scenarioDelegations: {},
   });
 }
 
@@ -971,6 +980,8 @@ export function appendScenariosToMediaplan(params: {
     rowsCount: nextScenarioNames.length,
     scenarioNames: nextScenarioNames,
     generatedPositionIndexes: normalizePositionIndexes(existing.generatedPositionIndexes),
+    campaignDelegateAccounts: existing.campaignDelegateAccounts || existing.import?.meta.delegate_accounts || [],
+    scenarioDelegations: existing.scenarioDelegations || {},
     upload: params.upload ?? existing.upload ?? null,
     mapping: params.mapping ?? existing.mapping ?? null,
     import: nextImport,
