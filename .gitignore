@@ -24,6 +24,15 @@
 .DS_Store
 *.pem
 
+# local backups and one-off snapshots
+.backup*/
+.backups/
+backups/
+*.bak*
+*backup*
+*before-*
+*~
+
 # debug
 npm-debug.log*
 yarn-debug.log*
